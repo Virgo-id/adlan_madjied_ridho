@@ -14,114 +14,48 @@ export type Database = {
   }
   public: {
     Tables: {
-      articles: {
+      posts: {
         Row: {
+          author: string | null
+          bio: string | null
+          category: string | null
+          content: string | null
+          cover_url: string | null
           created_at: string | null
-          id: number
-          isi: string
-          judul: string
-          kategori: string
-          penulis: string
-          sampul_url: string | null
+          id: string
+          slug: string
+          status: string | null
+          summary: string | null
+          title: string
+          views: number | null
         }
         Insert: {
+          author?: string | null
+          bio?: string | null
+          category?: string | null
+          content?: string | null
+          cover_url?: string | null
           created_at?: string | null
-          id?: number
-          isi: string
-          judul: string
-          kategori: string
-          penulis?: string
-          sampul_url?: string | null
+          id?: string
+          slug: string
+          status?: string | null
+          summary?: string | null
+          title: string
+          views?: number | null
         }
         Update: {
+          author?: string | null
+          bio?: string | null
+          category?: string | null
+          content?: string | null
+          cover_url?: string | null
           created_at?: string | null
-          id?: number
-          isi?: string
-          judul?: string
-          kategori?: string
-          penulis?: string
-          sampul_url?: string | null
-        }
-        Relationships: []
-      }
-      profiles: {
-        Row: {
-          biografi: string
-          created_at: string
-          foto_url: string | null
-          id: number
-          nama: string
-          nama_panggilan: string
-        }
-        Insert: {
-          biografi: string
-          created_at?: string
-          foto_url?: string | null
-          id?: number
-          nama: string
-          nama_panggilan: string
-        }
-        Update: {
-          biografi?: string
-          created_at?: string
-          foto_url?: string | null
-          id?: number
-          nama?: string
-          nama_panggilan?: string
-        }
-        Relationships: []
-      }
-      project_monitors: {
-        Row: {
-          created_at: string | null
-          id: number
-          nama: string
-          status_terakhir: string | null
-          terakhir_diping: string | null
-          url: string
-        }
-        Insert: {
-          created_at?: string | null
-          id?: number
-          nama: string
-          status_terakhir?: string | null
-          terakhir_diping?: string | null
-          url: string
-        }
-        Update: {
-          created_at?: string | null
-          id?: number
-          nama?: string
-          status_terakhir?: string | null
-          terakhir_diping?: string | null
-          url?: string
-        }
-        Relationships: []
-      }
-      projects: {
-        Row: {
-          created_at: string | null
-          deskripsi: string | null
-          foto_urls: string[] | null
-          id: number
-          link: string | null
-          nama: string
-        }
-        Insert: {
-          created_at?: string | null
-          deskripsi?: string | null
-          foto_urls?: string[] | null
-          id?: number
-          link?: string | null
-          nama: string
-        }
-        Update: {
-          created_at?: string | null
-          deskripsi?: string | null
-          foto_urls?: string[] | null
-          id?: number
-          link?: string | null
-          nama?: string
+          id?: string
+          slug?: string
+          status?: string | null
+          summary?: string | null
+          title?: string
+          views?: number | null
         }
         Relationships: []
       }

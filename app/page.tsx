@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation"; // Import untuk navigasi halaman
 
 // ==========================================
 // 1. KOMPONEN HEADER
@@ -47,7 +48,7 @@ function HeroProfil({ umur }: { umur: number }) {
             Adlan Madjied Ridho
           </h1>
           <p className="mt-3 text-base text-zinc-600 dark:text-zinc-400 leading-relaxed">
-            Santri Annuqayah yang tertarik pada pengembangan website dan karya tulis.
+            Santri Annuqayah yang tertarik pada pengembangan website and karya tulis.
           </p>
         </div>
       </div>
@@ -154,6 +155,7 @@ function PortfolioContact() {
 export default function Home() {
   const [activeSlide, setActiveSlide] = useState(0);
   const slideRefs = [useRef<HTMLElement>(null), useRef<HTMLElement>(null), useRef<HTMLElement>(null)];
+  const router = useRouter(); // Instance router Next.js
 
   // Hitung Umur Otomatis
   const hariIni = new Date();
@@ -164,6 +166,22 @@ export default function Home() {
     umurAji--;
   }
 
+  // FITUR: Shortcut Alt + L ke halaman Admin
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Deteksi jika tombol Alt + l (atau L) ditekan bersamaan
+      if (event.altKey && event.key.toLowerCase() === "l") {
+        event.preventDefault(); // Mencegah fungsi bawaan browser jika ada
+        router.push("/admin"); // Lompat ke halaman admin
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [router]);
+
   // Deteksi Slide Aktif Saat Di-scroll
   useEffect(() => {
     const observers = slideRefs.map((ref, index) => {
@@ -173,7 +191,7 @@ export default function Home() {
             setActiveSlide(index);
           }
         },
-        { threshold: 0.5 } // Aktif jika 50% slide sudah masuk layar
+        { threshold: 0.5 }
       );
 
       if (ref.current) observer.observe(ref.current);
@@ -185,7 +203,7 @@ export default function Home() {
     };
   }, []);
 
-  // Fungsi Lompat ke Slide Tertentu saat Titik Diklik
+  // Fungsi Lompat ke Slide Tertentu
   const scrollToSlide = (index: number) => {
     slideRefs[index].current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -193,7 +211,7 @@ export default function Home() {
   return (
     <div className="flex min-h-screen flex-col bg-zinc-50 font-sans text-zinc-900 overflow-hidden dark:bg-zinc-950 dark:text-zinc-50">
       
-      {/* NAVIGASI TITIK-TITIK (Floating Bullets di Kanan Layar) */}
+      {/* NAVIGASI TITIK-TITIK */}
       <div className="fixed right-6 top-1/2 z-50 flex -translate-y-1/2 flex-col gap-3">
         {[0, 1, 2].map((index) => (
           <button
@@ -209,7 +227,7 @@ export default function Home() {
         ))}
       </div>
 
-      {/* Konten Utama (Scrollbar Bawaan Disembunyikan via Tailwind) */}
+      {/* Konten Utama */}
       <main className="h-screen w-full overflow-y-scroll snap-y snap-mandatory scroll-smooth [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
         
         {/* SLIDE 1: HEADER + IDENTITAS */}
