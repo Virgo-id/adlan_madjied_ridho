@@ -1,171 +1,200 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
+import Link from "next/link";
 
-interface Contact {
+type ChatUser = {
   id: string;
-  name: string;
-  lastMessage: string;
-  time: string;
-  unread: boolean;
-  online: boolean;
-}
+  full_name: string | null;
+  email: string | null;
+  last_message: string | null;
+  last_message_time: string | null;
+  unread_count: number; // Menampung jumlah pesan belum dibaca
+};
 
-interface Message {
-  id: string;
-  sender: "me" | "user";
-  text: string;
-  time: string;
-}
+export default function ChatPage() {
+  const [users, setUsers] = useState<ChatUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-export default function ChatDashboard() {
-  const [contacts] = useState<Contact[]>([
-    { id: "1", name: "Zainal Abidin", lastMessage: "Ji, sistem login SIAKAD kemarin aman kan?", time: "10.15", unread: true, online: true },
-    { id: "2", name: "Rahmat Hidayat", lastMessage: "Buku katalog Perpustakaan Lubangsa sudah di-update?", time: "Kemarin", unread: false, online: false },
-    { id: "3", name: "Faris Ahmad", lastMessage: "Minta tolong cek error token API-nya dong.", time: "23 Mei", unread: false, online: true },
-  ]);
+  useEffect(() => {
+    const fetchChatUsers = async () => {
+      try {
+        setLoading(true);
 
-  const [activeContact, setActiveContact] = useState<Contact | null>(contacts[0]);
-  const [inputMessage, setInputMessage] = useState("");
-  
-  const [messages, setMessages] = useState<Message[]>([
-    { id: "1", sender: "user", text: "Halo Adlan, mau tanya soal aplikasi OPAC.", time: "10.00" },
-    { id: "2", sender: "me", text: "Yo, halo! Kenapa bro? Ada bagian yang eror atau mau request fitur?", time: "10.02" },
-    { id: "3", sender: "user", text: "Ji, sistem login SIAKAD kemarin aman kan?", time: "10.15" },
-  ]);
+        // Query 1: Ambil semua messages beserta is_admin & is_read untuk hitung unread
+        const { data: messages, error: messagesError } = await supabase
+          .from("messages")
+          .select("sender_id, text, created_at, is_admin, is_read")
+          .order("created_at", { ascending: false });
 
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputMessage.trim()) return;
+        if (messagesError) {
+          setError(messagesError.message);
+          console.error("Error fetching messages:", messagesError);
+          return;
+        }
 
-    const newMsg: Message = {
-      id: Date.now().toString(),
-      sender: "me",
-      text: inputMessage,
-      time: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
+        // Dapatkan unique sender_ids dan filter null/undefined
+        const senderIds = [
+          ...new Set(
+            messages?.map((m: any) => m.sender_id).filter((id: any) => id && id.trim?.() !== "") || []
+          ),
+        ];
+        console.log("Filtered sender IDs:", senderIds);
+
+        if (senderIds.length === 0) {
+          setUsers([]);
+          setLoading(false);
+          return;
+        }
+
+        // Query 2: Ambil profile data dengan error handling
+        let profiles: any[] = [];
+        if (senderIds.length > 0) {
+          try {
+            const { data: profilesData, error: profilesError } = await supabase
+              .from("profiles")
+              .select("id, full_name")
+              .in("id", senderIds);
+
+            if (profilesError) {
+              console.warn("Error fetching profiles (non-critical):", profilesError);
+            } else {
+              profiles = profilesData || [];
+            }
+          } catch (err) {
+            console.warn("Exception fetching profiles:", err);
+          }
+        }
+
+        // Buat map profiles untuk lookup cepat
+        const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+
+        // Hitung total unread messages per user (sender_id)
+        // Kriterianya: is_admin = false DAN is_read = false
+        const unreadCountsMap = new Map<string, number>();
+        
+        if (messages) {
+          messages.forEach((msg: any) => {
+            const senderId = msg.sender_id;
+            if (senderId && !msg.is_admin && !msg.is_read) {
+              const currentCount = unreadCountsMap.get(senderId) || 0;
+              unreadCountsMap.set(senderId, currentCount + 1);
+            }
+          });
+        }
+
+        // Kelompokkan pesan berdasarkan sender_id untuk mengambil data chat terakhir
+        const userMap = new Map<string, ChatUser>();
+
+        if (messages) {
+          messages.forEach((msg: any) => {
+            const senderId = msg.sender_id;
+            if (senderId && !userMap.has(senderId)) {
+              const profile = profileMap.get(senderId);
+              const displayName = profile?.full_name || senderId;
+              const unreadCount = unreadCountsMap.get(senderId) || 0;
+              
+              userMap.set(senderId, {
+                id: senderId,
+                full_name: displayName,
+                email: null,
+                last_message: msg.text,
+                last_message_time: msg.created_at,
+                unread_count: unreadCount, // Pasangkan datanya ke sini
+              });
+            }
+          });
+        }
+
+        setUsers(Array.from(userMap.values()));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Terjadi kesalahan");
+        console.error("Unexpected error:", err);
+      } finally {
+        setLoading(false);
+      }
     };
 
-    setMessages([...messages, newMsg]);
-    setInputMessage("");
-  };
+    fetchChatUsers();
+  }, []);
 
   return (
-    <main className="flex-1 md:pl-20 px-4 md:px-6 h-screen flex flex-col items-start justify-start pt-4 pb-4 md:pt-6 md:pb-6 bg-black transition-all duration-300 ease-out overflow-hidden">
-      
-      {/* RUANG DISKUSI INTERAKTIF */}
-      <div className="w-full flex flex-1 overflow-hidden gap-0 md:gap-6 relative">
-        
-        {/* KOLOM KIRI: DAFTAR KONTAK PESAN */}
-        <div className={`flex flex-col w-full md:w-72 flex-shrink-0 border-r-0 md:border-r border-zinc-900 md:pr-4 space-y-4 overflow-y-auto transition-all duration-200 ${
-          activeContact ? "hidden md:flex" : "flex"
-        }`}>
-          <div className="select-none px-1">
-            <p className="text-[10px] font-extrabold text-emerald-500 uppercase tracking-widest">
-              Pesan Masuk
-            </p>
-          </div>
-          
-          <div className="space-y-1">
-            {contacts.map((contact) => (
-              <button
-                key={contact.id}
-                onClick={() => setActiveContact(contact)}
-                className={`w-full text-left p-3 rounded-xl transition-all flex flex-col gap-1 ${
-                  activeContact?.id === contact.id
-                    ? "bg-zinc-900 text-white"
-                    : "hover:bg-zinc-900/50"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold flex items-center gap-1.5 text-zinc-200">
-                    {contact.name}
-                    {contact.online && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />}
-                  </span>
-                  <span className="text-[9px] text-zinc-500 font-semibold">{contact.time}</span>
-                </div>
-                <p className={`text-[11px] truncate ${activeContact?.id === contact.id ? "text-zinc-400" : "text-zinc-500"}`}>
-                  {contact.lastMessage}
-                </p>
-              </button>
-            ))}
-          </div>
+    <div className="w-full h-full p-6 md:pl-16">
+      <h1 className="text-3xl font-bold mb-6">Daftar Obrolan</h1>
+
+      {loading && (
+        <div className="flex justify-center items-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
         </div>
+      )}
 
-        {/* KOLOM KANAN: CHAT BUBBLE STREAM & RUANG KETIK */}
-        <div className={`flex-1 flex flex-col h-full overflow-hidden transition-all duration-200 ${
-          activeContact ? "flex" : "hidden md:flex"
-        }`}>
-          
-          {activeContact ? (
-            <>
-              {/* Header Room Chat */}
-              <div className="pb-3 border-b border-zinc-900 flex items-center gap-3 flex-shrink-0">
-                <button 
-                  onClick={() => setActiveContact(null)}
-                  className="flex md:hidden h-8 w-8 items-center justify-center rounded-lg bg-zinc-900 text-zinc-400 active:scale-95 transition-all"
-                >
-                  <i className="fa-solid fa-arrow-left text-xs" />
-                </button>
+      {error && (
+        <div className="bg-red-500/10 border border-red-500 text-red-600 px-4 py-3 rounded mb-4">
+          <p className="font-semibold">Error:</p>
+          <p>{error}</p>
+        </div>
+      )}
 
-                <div className="flex flex-col">
-                  <h2 className="text-sm font-bold text-white leading-tight">
-                    {activeContact.name}
-                  </h2>
-                  <p className="text-[10px] font-extrabold text-emerald-500 uppercase tracking-wider mt-0.5">
-                    {activeContact.online ? "Online" : "Offline"}
+      {!loading && users.length === 0 && !error && (
+        <div className="text-center py-12">
+          <p className="text-zinc-600 dark:text-zinc-400 mb-4">
+            Tidak ada obrolan yang tersedia
+          </p>
+        </div>
+      )}
+
+      {!loading && users.length > 0 && (
+        <div className="grid gap-3">
+          {users.map((user) => (
+            <Link
+              key={user.id}
+              href={`/admin/chat/${user.id}`}
+              className="p-4 bg-zinc-100 dark:bg-zinc-900 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition border border-transparent hover:border-emerald-500/30 flex flex-col justify-between"
+            >
+              <div className="flex justify-between items-start gap-4">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-zinc-900 dark:text-zinc-100">
+                    {user.full_name || "Pengguna Tanpa Nama"}
+                  </p>
+                  {user.email && (
+                    <p className="text-xs text-zinc-500 dark:text-zinc-500 mb-2">
+                      {user.email}
+                    </p>
+                  )}
+                  <p className={`text-sm line-clamp-2 ${user.unread_count > 0 ? "text-zinc-900 dark:text-zinc-200 font-medium" : "text-zinc-600 dark:text-zinc-400"}`}>
+                    {user.last_message || "Tidak ada pesan"}
                   </p>
                 </div>
-              </div>
 
-              {/* Area Aliran Pesan Obrolan */}
-              <div className="flex-1 overflow-y-auto py-4 space-y-4 pr-1 scrollbar-thin">
-                {messages.map((msg) => {
-                  const isMe = msg.sender === "me";
-                  return (
-                    <div
-                      key={msg.id}
-                      className={`flex flex-col max-w-[85%] md:max-w-[75%] ${isMe ? "ml-auto items-end" : "mr-auto items-start"}`}
-                    >
-                      <div className={`rounded-2xl px-4 py-2.5 text-xs font-semibold leading-relaxed ${
-                        isMe
-                          ? "bg-emerald-600 text-white"
-                          : "bg-zinc-900 text-zinc-300"
-                      }`}>
-                        {msg.text}
-                      </div>
-                      <span className="text-[9px] font-medium text-zinc-600 mt-1 px-1">
-                        {msg.time}
-                      </span>
+                {/* Sisi Kanan: Indikator Waktu & Bubble Angka Pesan Baru */}
+                <div className="flex flex-col items-end justify-between h-full min-w-[70px] self-stretch">
+                  {user.last_message_time && (
+                    <p className={`text-[11px] ${user.unread_count > 0 ? "text-emerald-500 font-semibold" : "text-zinc-500"}`}>
+                      {new Date(user.last_message_time).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  )}
+                  
+                  {/* Bubble Notifikasi Emerald ala Premium Chat */}
+                  {user.unread_count > 0 && (
+                    <div className="mt-2 bg-emerald-500 text-white font-bold text-[10px] min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center shadow-sm animate-in scale-in duration-200">
+                      {user.unread_count}
                     </div>
-                  );
-                })}
+                  )}
+                </div>
               </div>
-
-              {/* Tempat Ketik / Input Baris Pesan */}
-              <form onSubmit={handleSendMessage} className="pt-3 border-t border-zinc-900 flex items-center gap-2 flex-shrink-0 pb-2 md:pb-0">
-                <input
-                  type="text"
-                  value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  placeholder="Ketik balasan pesan..."
-                  className="flex-1 bg-zinc-900 text-zinc-200 text-xs font-semibold px-4 py-3 rounded-xl border-0 focus:ring-1 focus:ring-emerald-500 outline-none"
-                />
-                <button
-                  type="submit"
-                  className="h-9 w-9 flex items-center justify-center bg-white text-black rounded-xl hover:bg-emerald-500 hover:text-white transition-all active:scale-95"
-                >
-                  <i className="fa-solid fa-paper-plane text-xs" />
-                </button>
-              </form>
-            </>
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 select-none">
-              <i className="fa-regular fa-comments text-2xl mb-2" />
-              <p className="text-xs font-semibold">Pilih pesan untuk mulai mengobrol</p>
-            </div>
-          )}
+              
+              {/* Info tanggal opsional di bawah jika diperlukan */}
+              {user.last_message_time && (
+                <p className="text-[10px] text-zinc-400 dark:text-zinc-600 mt-2 border-t border-zinc-200/50 dark:border-zinc-800/50 pt-1 w-full">
+                  {new Date(user.last_message_time).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}
+                </p>
+              )}
+            </Link>
+          ))}
         </div>
-      </div>
-    </main>
+      )}
+    </div>
   );
 }

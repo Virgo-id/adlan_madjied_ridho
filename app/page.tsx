@@ -3,7 +3,26 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation"; // Import untuk navigasi halaman
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
+
+// ==========================================
+// INTERFACE DATA SUPABASE
+// ==========================================
+interface Post {
+  id: string;
+  created_at: string | null;
+  title: string;
+  slug: string | null;
+  category: string | null;
+  status: string | null;
+  views: number | null;
+  content: string | null;
+  summary: string | null;
+  author: string | null;
+  bio: string | null;
+  cover_url: string | null;
+}
 
 // ==========================================
 // 1. KOMPONEN HEADER
@@ -16,10 +35,10 @@ function Header() {
           AMR
         </Link>
         <Link 
-          href="/chat" 
-          className="rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-zinc-50 transition-all hover:bg-zinc-800 hover:scale-[1.02] active:scale-[0.98] dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          href="/customer/chat" 
+          className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-zinc-50 transition-all hover:bg-emerald-700 hover:scale-[1.02] active:scale-[0.98] dark:bg-emerald-500 dark:text-zinc-950 dark:hover:bg-emerald-400"
         >
-          Chat with me
+          Hubungi Saya
         </Link>
       </div>
     </header>
@@ -29,7 +48,7 @@ function Header() {
 // ==========================================
 // 2. KOMPONEN HERO PROFIL
 // ==========================================
-function HeroProfil({ umur }: { umur: number }) {
+function HeroProfil({ umur, onSecretClick }: { umur: number | string; onSecretClick: () => void }) {
   return (
     <div className="flex flex-col justify-center h-full gap-8 py-4">
       <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start text-center sm:text-left">
@@ -48,22 +67,31 @@ function HeroProfil({ umur }: { umur: number }) {
             Adlan Madjied Ridho
           </h1>
           <p className="mt-3 text-base text-zinc-600 dark:text-zinc-400 leading-relaxed">
-            Santri Annuqayah yang tertarik pada pengembangan website and karya tulis.
+            Santri Annuqayah yang mendalami pengembangan situs web dan karya tulis.
           </p>
         </div>
       </div>
 
       <div className="border-t border-zinc-200 pt-6 dark:border-zinc-900">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-400 dark:text-zinc-500 mb-4">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-500 mb-4">
           Identitas Diri
         </h2>
         <ul className="grid grid-cols-1 gap-3 text-base text-zinc-600 dark:text-zinc-400 sm:grid-cols-2">
-          <li><span className="font-semibold text-zinc-900 dark:text-zinc-100">Nama:</span> adlan madjied ridho</li>
-          <li><span className="font-semibold text-zinc-900 dark:text-zinc-100">Panggilan:</span> aji</li>
-          <li><span className="font-semibold text-zinc-900 dark:text-zinc-100">Umur:</span> {umur} tahun</li>
+          <li>
+            <span 
+              onClick={onSecretClick} 
+              className="font-semibold text-zinc-900 dark:text-zinc-100 cursor-default select-none transition-colors active:text-emerald-500"
+              title="Identity"
+            >
+              Nama:
+            </span>{" "}
+            Adlan Madjied Ridho
+          </li>
+          <li><span className="font-semibold text-zinc-900 dark:text-zinc-100">Panggilan:</span> Aji</li>
+          <li><span className="font-semibold text-zinc-900 dark:text-zinc-100">Umur:</span> {umur} {typeof umur === "number" && "tahun"}</li>
           <li><span className="font-semibold text-zinc-900 dark:text-zinc-100">Lahir:</span> 01 September 2007</li>
           <li><span className="font-semibold text-zinc-900 dark:text-zinc-100">Zodiak:</span> Virgo</li>
-          <li><span className="font-semibold text-zinc-900 dark:text-zinc-100">Alamat:</span> Sukogidrih, Ledokombo, Jember</li>
+          <li><span className="font-semibold text-zinc-900 dark:text-zinc-100">Alamat:</span> Sukogidri, Ledokombo, Jember</li>
         </ul>
       </div>
     </div>
@@ -78,10 +106,10 @@ function Histori() {
     <div className="flex flex-col justify-center h-full gap-8 py-4">
       <div className="grid gap-8 sm:grid-cols-2">
         <div className="flex flex-col gap-4">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
-            Histori Jabatan
+          <h2 className="text-xs font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-500">
+            Riwayat Jabatan
           </h2>
-          <ul className="space-y-4 border-l-2 border-zinc-200 pl-4 dark:border-zinc-800">
+          <ul className="space-y-4 border-l-2 border-emerald-500 pl-4 dark:border-emerald-600">
             <li className="flex flex-col">
               <span className="font-semibold text-zinc-900 dark:text-zinc-100 text-base">Basis Data & Inventaris</span>
               <span className="text-sm text-zinc-500">Perpustakaan Lubangsa</span>
@@ -94,14 +122,14 @@ function Histori() {
         </div>
 
         <div className="flex flex-col gap-4">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
-            Histori Pendidikan
+          <h2 className="text-xs font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-500">
+            Riwayat Pendidikan
           </h2>
           <div className="relative border-l-2 border-zinc-200 pl-4 dark:border-zinc-800 space-y-3">
-            {["Universitas Annuqayah", "MA 1 Annuqayah", "MTs Nurul Mannan", "MI Nurul Mannan", "TK"].map((edu, idx) => (
+            {["Universitas Annuqayah", "MA 1 Annuqayah", "MTs Nurul Mannan", "MI Nurul Mannan", "Taman Kanak-kanak"].map((edu, idx) => (
               <div key={idx} className="relative text-base text-zinc-600 dark:text-zinc-400">
-                <div className="absolute -left-[22px] top-2 h-2 w-2 rounded-full bg-zinc-300 dark:bg-zinc-700 ring-4 ring-zinc-50 dark:ring-zinc-950" />
-                <span className={idx === 0 ? "font-bold text-zinc-900 dark:text-zinc-100" : ""}>
+                <div className={`absolute -left-[22px] top-2 h-2 w-2 rounded-full ring-4 ring-zinc-50 dark:ring-zinc-950 ${idx === 0 ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-700"}`} />
+                <span className={idx === 0 ? "font-bold text-emerald-600 dark:text-emerald-400" : ""}>
                   {edu}
                 </span>
               </div>
@@ -114,16 +142,103 @@ function Histori() {
 }
 
 // ==========================================
-// 4. KOMPONEN PORTFOLIO & CONTACT
+// 4. KOMPONEN KARYA TULIS (MINIMALIS & TINGGI PENUH SLIDE)
 // ==========================================
-function PortfolioContact() {
-  const tahunSekarang = new Date().getFullYear();
+function KaryaTulis() {
+  const [daftarKarya, setDaftarKarya] = useState<Post[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  useEffect(() => {
+    async function fetchPosts() {
+      try {
+        setIsLoading(true);
+        const { data, error } = await supabase
+          .from("posts")
+          .select("id, created_at, title, slug, category, status, views, content, summary, author, bio, cover_url")
+          .eq("status", "Published") 
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+        if (data) setDaftarKarya(data);
+      } catch (err) {
+        console.error("Gagal memuat karya tulis:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchPosts();
+  }, []);
+
+  return (
+    <div className="flex flex-col justify-between h-full py-12 gap-6">
+      
+      {/* JUDUL DIBUAT MINIMALIS */}
+      <div className="shrink-0">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-500">
+          Karya Tulis
+        </h2>
+      </div>
+
+      {/* GRID KONTEN MENGISI AREA TENGAH HINGGA BAWAH */}
+      <div className="grow grid gap-x-6 gap-y-8 grid-cols-1 sm:grid-cols-2 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-zinc-200 dark:[&::-webkit-scrollbar-thumb]:bg-zinc-800 [&::-webkit-scrollbar-thumb]:rounded-full">
+        {isLoading ? (
+          /* SKELETON LOADING BOX LANCIP */
+          [1, 2].map((n) => (
+            <div key={n} className="flex flex-col gap-3 animate-pulse">
+              <div className="w-full aspect-video bg-zinc-200 dark:bg-zinc-800" />
+              <div className="h-5 w-5/6 bg-zinc-300 dark:bg-zinc-700 mt-1" />
+            </div>
+          ))
+        ) : daftarKarya.length === 0 ? (
+          <div className="col-span-1 sm:col-span-2 text-center py-12 border border-dashed border-zinc-200 dark:border-zinc-800">
+            <p className="text-sm text-zinc-400">Belum ada karya tulis yang diterbitkan.</p>
+          </div>
+        ) : (
+          daftarKarya.map((karya) => {
+            return (
+              <Link 
+                key={karya.id}
+                href={`/blog/${karya.slug || karya.id}`}
+                className="flex flex-col gap-3 group block"
+              >
+                {/* SAMPUL KOTAK LANCIP PERFEK */}
+                {karya.cover_url && (
+                  <div className="relative w-full aspect-video overflow-hidden bg-zinc-100 dark:bg-zinc-900">
+                    <Image
+                      src={karya.cover_url}
+                      alt={`Sampul ${karya.title}`}
+                      fill
+                      sizes="(max-width: 640px) 100vw, 50vw"
+                      className="object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                  </div>
+                )}
+
+                {/* AREA JUDUL SAJA (TANPA BORDER / BG CARD) */}
+                <div>
+                  <h3 className="font-bold text-base text-zinc-900 dark:text-zinc-100 tracking-tight leading-snug group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors duration-200">
+                    {karya.title}
+                  </h3>
+                </div>
+              </Link>
+            );
+          })
+        )}
+      </div>
+
+    </div>
+  );
+}
+
+// ==========================================
+// 5. KOMPONEN PORTFOLIO & CONTACT
+// ==========================================
+function PortfolioContact({ tahun }: { tahun: number | string }) {
   return (
     <div className="flex flex-col justify-between h-full py-4">
       <div className="my-auto space-y-8">
         <div className="flex flex-col gap-4">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-500">
             Mari Terhubung
           </h2>
           <p className="text-base text-zinc-600 dark:text-zinc-400">
@@ -132,7 +247,7 @@ function PortfolioContact() {
           <div className="flex gap-4 mt-2">
             <a 
               href="mailto:adlanmadjied@example.com"
-              className="text-sm font-medium text-zinc-900 underline underline-offset-4 dark:text-zinc-50 hover:text-zinc-600 dark:hover:text-zinc-300"
+              className="text-sm font-medium text-zinc-900 underline underline-offset-4 decoration-emerald-500/50 dark:text-zinc-50 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
             >
               Email saya
             </a>
@@ -142,7 +257,7 @@ function PortfolioContact() {
 
       <footer className="w-full border-t border-zinc-200 pt-6 text-center dark:border-zinc-900">
         <p className="text-xs text-zinc-500 dark:text-zinc-600 tracking-wide">
-          &copy; {tahunSekarang} AMR. All rights reserved.
+          &copy; {tahun} AMR. Hak Cipta Dilindungi Undang-Undang.
         </p>
       </footer>
     </div>
@@ -150,29 +265,44 @@ function PortfolioContact() {
 }
 
 // ==========================================
-// Halaman Utama (Home)
+// HALAMAN UTAMA (HOME)
 // ==========================================
 export default function Home() {
   const [activeSlide, setActiveSlide] = useState(0);
-  const slideRefs = [useRef<HTMLElement>(null), useRef<HTMLElement>(null), useRef<HTMLElement>(null)];
-  const router = useRouter(); // Instance router Next.js
+  const [umurAji, setUmurAji] = useState<number | string>("-");
+  const [tahunSekarang, setTahunSekarang] = useState<number | string>("");
 
-  // Hitung Umur Otomatis
-  const hariIni = new Date();
-  const tanggalLahir = new Date("2007-09-01");
-  let umurAji = hariIni.getFullYear() - tanggalLahir.getFullYear();
-  const bulan = hariIni.getMonth() - tanggalLahir.getMonth();
-  if (bulan < 0 || (bulan === 0 && hariIni.getDate() < tanggalLahir.getDate())) {
-    umurAji--;
-  }
+  const slideRefs = [
+    useRef<HTMLElement>(null), 
+    useRef<HTMLElement>(null), 
+    useRef<HTMLElement>(null),
+    useRef<HTMLElement>(null)
+  ];
+  const router = useRouter();
 
-  // FITUR: Shortcut Alt + L ke halaman Admin
+  useEffect(() => {
+    const hariIni = new Date();
+    const tanggalLahir = new Date("2007-09-01");
+    let hitungUmur = hariIni.getFullYear() - tanggalLahir.getFullYear();
+    const bulan = hariIni.getMonth() - tanggalLahir.getMonth();
+    
+    if (bulan < 0 || (bulan === 0 && hariIni.getDate() < tanggalLahir.getDate())) {
+      hitungUmur--;
+    }
+    
+    setUmurAji(hitungUmur);
+    setTahunSekarang(hariIni.getFullYear());
+  }, []);
+
+  const handleAdminRedirect = () => {
+    router.push("/admin");
+  };
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Deteksi jika tombol Alt + l (atau L) ditekan bersamaan
       if (event.altKey && event.key.toLowerCase() === "l") {
-        event.preventDefault(); // Mencegah fungsi bawaan browser jika ada
-        router.push("/admin"); // Lompat ke halaman admin
+        event.preventDefault();
+        handleAdminRedirect();
       }
     };
 
@@ -182,7 +312,6 @@ export default function Home() {
     };
   }, [router]);
 
-  // Deteksi Slide Aktif Saat Di-scroll
   useEffect(() => {
     const observers = slideRefs.map((ref, index) => {
       const observer = new IntersectionObserver(
@@ -203,7 +332,6 @@ export default function Home() {
     };
   }, []);
 
-  // Fungsi Lompat ke Slide Tertentu
   const scrollToSlide = (index: number) => {
     slideRefs[index].current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -213,14 +341,14 @@ export default function Home() {
       
       {/* NAVIGASI TITIK-TITIK */}
       <div className="fixed right-6 top-1/2 z-50 flex -translate-y-1/2 flex-col gap-3">
-        {[0, 1, 2].map((index) => (
+        {[0, 1, 2, 3].map((index) => (
           <button
             key={index}
             onClick={() => scrollToSlide(index)}
             aria-label={`Ke slide ${index + 1}`}
             className={`h-2.5 w-2.5 rounded-full transition-all duration-300 ${
               activeSlide === index 
-                ? "bg-zinc-900 dark:bg-zinc-50 scale-125 ring-4 ring-zinc-900/10 dark:ring-zinc-50/20" 
+                ? "bg-emerald-600 dark:bg-emerald-400 scale-125 ring-4 ring-emerald-600/10 dark:ring-emerald-400/20" 
                 : "bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-500"
             }`}
           />
@@ -234,21 +362,28 @@ export default function Home() {
         <section ref={slideRefs[0]} className="flex h-screen w-full snap-start snap-always flex-col">
           <Header />
           <div className="mx-auto h-[calc(100vh-5rem)] w-full max-w-2xl px-6">
-            <HeroProfil umur={umurAji} />
+            <HeroProfil umur={umurAji} onSecretClick={handleAdminRedirect} />
           </div>
         </section>
         
         {/* SLIDE 2: HISTORI */}
-        <section ref={slideRefs[1]} className="flex h-screen w-full snap-start snap-always flex flex-col px-6 border-t border-zinc-100 dark:border-zinc-900">
+        <section ref={slideRefs[1]} className="flex h-screen w-full snap-start snap-always flex-col px-6 border-t border-zinc-100 dark:border-zinc-900">
           <div className="mx-auto h-full w-full max-w-2xl">
             <Histori />
           </div>
         </section>
         
-        {/* SLIDE 3: KONTAK & FOOTER */}
-        <section ref={slideRefs[2]} className="flex h-screen w-full snap-start snap-always flex flex-col px-6 border-t border-zinc-100 dark:border-zinc-900">
+        {/* SLIDE 3: KARYA TULIS */}
+        <section ref={slideRefs[2]} className="flex h-screen w-full snap-start snap-always flex-col px-6 border-t border-zinc-100 dark:border-zinc-900">
           <div className="mx-auto h-full w-full max-w-2xl">
-            <PortfolioContact />
+            <KaryaTulis />
+          </div>
+        </section>
+        
+        {/* SLIDE 4: KONTAK & FOOTER */}
+        <section ref={slideRefs[3]} className="flex h-screen w-full snap-start snap-always flex-col px-6 border-t border-zinc-100 dark:border-zinc-900">
+          <div className="mx-auto h-full w-full max-w-2xl">
+            <PortfolioContact tahun={tahunSekarang} />
           </div>
         </section>
       </main>

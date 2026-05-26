@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 interface WebsiteProject {
   id: string;
@@ -12,6 +14,7 @@ interface WebsiteProject {
 }
 
 export default function KoleksiWebsiteDashboard() {
+  const router = useRouter();
   const [projects, setProjects] = useState<WebsiteProject[]>([
     {
       id: "1",
@@ -31,8 +34,20 @@ export default function KoleksiWebsiteDashboard() {
     },
   ]);
 
+  // Proteksi Halaman: Cek Login
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push("/loginadmin");
+      }
+    };
+    checkUser();
+  }, [router]);
+
   return (
-    <main className="md:pl-20 px-4 md:px-6 min-h-screen flex flex-col items-start justify-start pt-8 md:pt-12 pb-24 bg-black transition-all duration-300">
+    // pl-16 ditambahkan agar konten tidak tertutup sidebar fixed Anda
+    <main className="md:pl-16 px-4 md:px-6 min-h-screen flex flex-col items-start justify-start pt-8 md:pt-12 pb-24 bg-black transition-all duration-300">
       
       {/* JUDUL HALAMAN UTAMA & ACTION BUTTON */}
       <div className="w-full max-w-5xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-10 md:mb-12 px-1">
@@ -51,7 +66,7 @@ export default function KoleksiWebsiteDashboard() {
         </button>
       </div>
 
-      {/* DAFTAR WEBSITE (CARDLESS & BORDERLESS LIST) */}
+      {/* DAFTAR WEBSITE */}
       <div className="w-full max-w-5xl space-y-8 px-1">
         <p className="text-[10px] font-extrabold text-emerald-500 uppercase tracking-widest mb-4">
           Project Aplikasi Aktif ({projects.length})
@@ -62,14 +77,12 @@ export default function KoleksiWebsiteDashboard() {
             key={project.id} 
             className="group relative flex flex-col md:flex-row md:items-start justify-between pb-6 border-b border-zinc-900 last:border-0 gap-4 md:gap-0"
           >
-            {/* Bagian Kiri: Info Proyek & Deskripsi */}
             <div className="flex-1 md:pr-6 w-full">
               <div className="flex flex-wrap items-center gap-2.5 mb-2">
                 <h2 className="text-sm md:text-base font-bold text-zinc-200 group-hover:text-emerald-400 transition-colors duration-200">
                   {project.name}
                 </h2>
                 
-                {/* Status Dot Indikator */}
                 <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase ${
                   project.status === "Production" 
                     ? "bg-emerald-950 text-emerald-400" 
@@ -84,7 +97,6 @@ export default function KoleksiWebsiteDashboard() {
                 {project.description}
               </p>
 
-              {/* URL Link Eksternal */}
               <div className="block mt-2">
                 <a 
                   href={project.url} 
@@ -97,7 +109,6 @@ export default function KoleksiWebsiteDashboard() {
                 </a>
               </div>
 
-              {/* Badges Tech Stack Mini */}
               <div className="flex flex-wrap gap-1.5 mt-3.5">
                 {project.techStack.map((tech) => (
                   <span 
@@ -110,7 +121,6 @@ export default function KoleksiWebsiteDashboard() {
               </div>
             </div>
 
-            {/* Bagian Kanan: Tombol Kontrol Cepat */}
             <div className="flex items-center gap-1.5 justify-end opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex-shrink-0">
               <button className="h-9 w-9 md:h-8 md:w-8 flex items-center justify-center rounded-lg text-xs font-bold text-zinc-500 hover:bg-zinc-900 transition-all">
                 <i className="fa-solid fa-pen text-xs" />

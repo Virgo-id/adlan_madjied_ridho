@@ -1,4 +1,6 @@
-export default function PostView({ post, onClose }: { post: any, onClose: () => void }) {
+import { Post } from "../karya-tulis/page";
+
+export default function PostView({ post, onClose }: { post: Post, onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black z-50 overflow-y-auto p-6 md:p-12 custom-scrollbar">
       

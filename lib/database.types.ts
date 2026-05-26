@@ -14,6 +14,44 @@ export type Database = {
   }
   public: {
     Tables: {
+      messages: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_admin: boolean | null
+          reply_to_id: string | null
+          sender_id: string | null
+          text: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_admin?: boolean | null
+          reply_to_id?: string | null
+          sender_id?: string | null
+          text: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_admin?: boolean | null
+          reply_to_id?: string | null
+          sender_id?: string | null
+          text?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_reply_to_id_fkey"
+            columns: ["reply_to_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       posts: {
         Row: {
           author: string | null
@@ -23,7 +61,7 @@ export type Database = {
           cover_url: string | null
           created_at: string | null
           id: string
-          slug: string
+          slug: string | null
           status: string | null
           summary: string | null
           title: string
@@ -37,7 +75,7 @@ export type Database = {
           cover_url?: string | null
           created_at?: string | null
           id?: string
-          slug: string
+          slug?: string | null
           status?: string | null
           summary?: string | null
           title: string
@@ -51,11 +89,38 @@ export type Database = {
           cover_url?: string | null
           created_at?: string | null
           id?: string
-          slug?: string
+          slug?: string | null
           status?: string | null
           summary?: string | null
           title?: string
           views?: number | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+          role: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          full_name: string
+          id: string
+          role?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          full_name?: string
+          id?: string
+          role?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -64,7 +129,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_admin: { Args: never; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
