@@ -127,6 +127,24 @@ export type Database = {
         }
         Relationships: []
       }
+      system_status: {
+        Row: {
+          id: number
+          last_checked: string
+          status: string
+        }
+        Insert: {
+          id?: number
+          last_checked?: string
+          status?: string
+        }
+        Update: {
+          id?: number
+          last_checked?: string
+          status?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
