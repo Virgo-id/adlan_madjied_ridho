@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 // ==========================================
-// INTERFACE DATA SUPABASE
+// INTERFACE DATA SUPABASE (SUDAH DIPERBAIKI)
 // ==========================================
 interface Post {
   id: string;
@@ -16,12 +16,13 @@ interface Post {
   slug: string | null;
   category: string | null;
   status: string | null;
-  views: number | null;
-  content: string | null;
   summary: string | null;
-  author: string | null;
-  bio: string | null;
   cover_url: string | null;
+  // Properti di bawah dibuat opsional (?) agar build tidak error saat partial select
+  views?: number | null;
+  content?: string | null;
+  author?: string | null;
+  bio?: string | null;
 }
 
 const ITEMS_PER_PAGE = 4; // Ambil 4 data sedikit demi sedikit per baris grid
@@ -323,6 +324,7 @@ function KaryaTulis() {
     </div>
   );
 }
+
 // ==========================================
 // 5. KOMPONEN PORTFOLIO & CONTACT
 // ==========================================
@@ -468,7 +470,7 @@ export default function Home() {
           </div>
         </section>
         
-        {/* SLIDE 3: KARYA TULIS (Dinaikkan max-w-5xl agar grid 4 kolom pas dan sedap dipandang) */}
+        {/* SLIDE 3: KARYA TULIS */}
         <section ref={slideRefs[2]} className="flex h-screen w-full snap-start snap-always flex-col px-6 border-t border-zinc-100 dark:border-zinc-900">
           <div className="mx-auto h-full w-full max-w-5xl">
             <KaryaTulis />
