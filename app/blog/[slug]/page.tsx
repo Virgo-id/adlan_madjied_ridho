@@ -1,10 +1,13 @@
-"use client";
+// app/blog/[slug]/page.tsx
+// (TIDAK ADA "use client" DI SINI. Ini Server Component murni!)
 
-import { useState, useEffect, use } from "react";
+// 1. SEMUA IMPORT DIKUMPULKAN DI PALING ATAS
+import { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { notFound } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { NavigasiKembali, TrackerViews } from "../ClientFeatures";
 
 interface Post {
   id: string;
@@ -21,96 +24,64 @@ interface Post {
   cover_url: string | null;
 }
 
-export default function BlogDetailPage({ params }: { params: Promise<{ slug: string }> }) {
-  const resolvedParams = use(params);
-  const router = useRouter();
-  const [karya, setKarya] = useState<Post | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+// 2. FUNGSI GENERATE METADATA UNTUK ROBOT GOOGLE
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const resolvedParams = await params;
+  
+  const { data: karya } = await supabase
+    .from("posts")
+    .select("title, summary")
+    .eq("slug", resolvedParams.slug)
+    .single();
 
-  useEffect(() => {
-    async function fetchPostDetail() {
-      try {
-        setIsLoading(true);
-        
-        // 1. Coba ambil data berdasarkan slug terlebih dahulu
-        let { data, error } = await supabase
-          .from("posts")
-          .select("*")
-          .eq("slug", resolvedParams.slug)
-          .single();
+  if (!karya) return { title: "Karya Tidak Ditemukan" };
 
-        // 2. Fallback: Kalau gagal/tidak ketemu lewat slug, coba cari pakai UUID (id)
-        if (error || !data) {
-          const { data: fallbackData } = await supabase
-            .from("posts")
-            .select("*")
-            .eq("id", resolvedParams.slug)
-            .single();
-          
-          if (fallbackData) data = fallbackData;
-        }
-
-        if (data) {
-          // Kunci pengaman anti-refresh spam pake sessionStorage
-          const sessionKey = `viewed_${data.id}`;
-          const hasViewed = sessionStorage.getItem(sessionKey);
-
-          if (!hasViewed) {
-            // Kalau beneran kunjungan pertama di sesi tab ini, tembak RPC ke DB
-            await supabase.rpc("increment_views", { post_id: data.id });
-            sessionStorage.setItem(sessionKey, "true");
-
-            // Tampilan UI lokal langsung ditambah 1 biar sinkron instant
-            setKarya({
-              ...data,
-              views: (data.views || 0) + 1
-            });
-          } else {
-            // Kalau cuma hasil refresh, set data asli tanpa nembak RPC lagi
-            setKarya(data);
-          }
-        }
-      } catch (err) {
-        console.error("Gagal memuat isi artikel:", err);
-      } finally {
-        setIsLoading(false);
-      }
+  return {
+    title: `${karya.title} | Blog AMR`,
+    description: karya.summary || "Baca karya tulis terbaru di portfolio AMR.",
+    openGraph: {
+      title: karya.title,
+      description: karya.summary || "Baca karya tulis terbaru di portfolio AMR.",
     }
-    
-    fetchPostDetail();
-  }, [resolvedParams.slug]);
+  };
+}
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center">
-        <div className="h-6 w-6 animate-spin border-2 border-emerald-500 border-t-transparent" />
-      </div>
-    );
+// 3. KOMPONEN UTAMA HALAMAN
+export default async function BlogDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+  const resolvedParams = await params;
+
+  // Ambil data langsung dari server saat halaman diminta
+  let { data: karya } = await supabase
+    .from("posts")
+    .select("*")
+    .eq("slug", resolvedParams.slug)
+    .single();
+
+  // Fallback ke ID jika slug tidak ditemukan
+  if (!karya) {
+    const { data: fallbackData } = await supabase
+      .from("posts")
+      .select("*")
+      .eq("id", resolvedParams.slug)
+      .single();
+    
+    if (fallbackData) karya = fallbackData;
   }
 
+  // Jika data tetap tidak ada di database, langsung lempar ke halaman 404 bawaan Next.js
   if (!karya) {
-    return (
-      <div className="min-h-screen bg-zinc-50 text-center flex flex-col items-center justify-center dark:bg-zinc-950 px-6">
-        <p className="text-zinc-400 text-sm mb-4">Karya tulis tidak ditemukan atau sudah dihapus.</p>
-        <Link href="/blog" className="text-xs font-bold text-emerald-500 underline">Kembali ke Arsip</Link>
-      </div>
-    );
+    notFound();
   }
 
   return (
     <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
       
-      {/* TIGA MENU NAVIGASI MINIMALIS */}
+      {/* Pemicu penambah views di background (Client Side) */}
+      <TrackerViews postId={karya.id} />
+
+      {/* MENU NAVIGASI MINIMALIS */}
       <div className="absolute left-6 top-8 sm:left-12 sm:top-12 z-50 flex items-center gap-3 text-xs font-semibold text-zinc-500 select-none">
-        <button 
-          onClick={() => router.back()} 
-          className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors flex items-center gap-1"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-          </svg>
-          Kembali
-        </button>
+        <NavigasiKembali />
         <span className="text-zinc-300 dark:text-zinc-800">|</span>
         <Link href="/" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
           Beranda
@@ -164,9 +135,19 @@ export default function BlogDetailPage({ params }: { params: Promise<{ slug: str
           </div>
         )}
 
-        {/* ISI KONTEN UTAMA (RATA KANAN-KIRI & BERSPASI) */}
-        <div className="text-base text-zinc-700 dark:text-zinc-300 leading-relaxed text-justify whitespace-pre-line break-words [margin-bottom:2rem] [&_p]:mb-6">
-          {karya.content}
+        {/* ISI KONTEN UTAMA (RATA KANAN-KIRI & MARGIN PARAGRAF ASLI 1.5REM) */}
+        <div className="text-base text-zinc-700 dark:text-zinc-300 leading-relaxed text-justify break-words mb-8">
+          {karya.content
+            ? karya.content.split("\n").map((paragraf, index) => {
+                if (paragraf.trim() === "") return <div key={index} className="h-4" />;
+                
+                return (
+                  <p key={index} className="mb-6">
+                    {paragraf}
+                  </p>
+                );
+              })
+            : null}
         </div>
 
         {/* KARTU BIOGRAFI PENULIS */}
