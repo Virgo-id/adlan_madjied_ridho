@@ -159,13 +159,13 @@ export default function BlogDetailPage({ params }: { params: Promise<{ slug: str
 
         {/* RINGKASAN/SUMMARY (JIKA ADA) */}
         {karya.summary && (
-          <div className="mb-8 border-l-2 border-emerald-500 pl-4 italic text-zinc-600 dark:text-zinc-400 text-sm">
+          <div className="mb-8 border-l-2 border-emerald-500 pl-4 italic text-zinc-600 dark:text-zinc-400 text-sm text-justify">
             {karya.summary}
           </div>
         )}
 
-        {/* ISI KONTEN UTAMA */}
-        <div className="text-base text-zinc-700 dark:text-zinc-300 leading-relaxed space-y-6 whitespace-pre-line break-words">
+        {/* ISI KONTEN UTAMA (RATA KANAN-KIRI & BERSPASI) */}
+        <div className="text-base text-zinc-700 dark:text-zinc-300 leading-relaxed text-justify whitespace-pre-line break-words [margin-bottom:2rem] [&_p]:mb-6">
           {karya.content}
         </div>
 
@@ -175,7 +175,7 @@ export default function BlogDetailPage({ params }: { params: Promise<{ slug: str
           <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-50">
             {karya.author || "Adlan Madjied Ridho"}
           </h4>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed text-justify">
             {karya.bio || "Penulis asal Jember yang mendalami website dan literasi."}
           </p>
         </div>
