@@ -24,6 +24,8 @@ interface Post {
   cover_url: string | null;
 }
 
+const ITEMS_PER_PAGE = 4; // Ambil 4 data sedikit demi sedikit per baris grid
+
 // ==========================================
 // 1. KOMPONEN HEADER
 // ==========================================
@@ -142,94 +144,185 @@ function Histori() {
 }
 
 // ==========================================
-// 4. KOMPONEN KARYA TULIS (MINIMALIS & TINGGI PENUH SLIDE)
+// 4. KOMPONEN KARYA TULIS (HORIZONTAL SCROLL & LAZY)
 // ==========================================
 function KaryaTulis() {
   const [daftarKarya, setDaftarKarya] = useState<Post[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoadingInitial, setIsLoadingInitial] = useState<boolean>(true);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+  const [hasMore, setHasMore] = useState<boolean>(true);
+  const [page, setPage] = useState<number>(0);
+  
+  // State mounted untuk mencegah error Hydration Mismatch
+  const [mounted, setMounted] = useState<boolean>(false);
 
+  const observerTarget = useRef<HTMLDivElement | null>(null);
+
+  // Set mounted jadi true setelah komponen masuk ke browser klien
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Fetch data dengan sistem range (Pagination)
+  useEffect(() => {
+    if (!mounted) return;
+
     async function fetchPosts() {
       try {
-        setIsLoading(true);
+        if (page === 0) setIsLoadingInitial(true);
+        else setIsLoadingMore(true);
+
+        const from = page * ITEMS_PER_PAGE;
+        const to = from + ITEMS_PER_PAGE - 1;
+
         const { data, error } = await supabase
           .from("posts")
-          .select("id, created_at, title, slug, category, status, views, content, summary, author, bio, cover_url")
+          .select("id, created_at, title, slug, category, status, summary, cover_url")
           .eq("status", "Published") 
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false })
+          .range(from, to);
 
         if (error) throw error;
-        if (data) setDaftarKarya(data);
+
+        if (data) {
+          setDaftarKarya((prev) => (page === 0 ? data : [...prev, ...data]));
+          if (data.length < ITEMS_PER_PAGE) {
+            setHasMore(false);
+          }
+        }
       } catch (err) {
         console.error("Gagal memuat karya tulis:", err);
       } finally {
-        setIsLoading(false);
+        setIsLoadingInitial(false);
+        setIsLoadingMore(false);
       }
     }
     fetchPosts();
-  }, []);
+  }, [page, mounted]);
+
+  // Setup Observer khusus untuk mendeteksi scroll horizontal ke kanan
+  useEffect(() => {
+    const target = observerTarget.current;
+    if (!target || !hasMore || isLoadingInitial || isLoadingMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setPage((prevPage) => prevPage + 1);
+        }
+      },
+      { 
+        threshold: 0.1,
+        root: target.parentElement // mengacu ke container scroll horizontal
+      }
+    );
+
+    observer.observe(target);
+
+    return () => {
+      if (target) observer.unobserve(target);
+    };
+  }, [hasMore, isLoadingInitial, isLoadingMore]);
+
+  // Jika belum mounted di klien, tampilkan div kosong untuk mencegah perbedaan HTML dengan server
+  if (!mounted) {
+    return <div className="h-full py-12" />;
+  }
 
   return (
     <div className="flex flex-col justify-between h-full py-12 gap-6">
       
-      {/* JUDUL DIBUAT MINIMALIS */}
-      <div className="shrink-0">
+      {/* JUDUL & TOMBOL SEMUA KARYA */}
+      <div className="shrink-0 flex items-center justify-between">
         <h2 className="text-xs font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-500">
           Karya Tulis
         </h2>
+        <Link 
+          href="/blog" 
+          className="text-xs font-semibold text-zinc-500 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors flex items-center gap-1"
+        >
+          Semua Karya
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+          </svg>
+        </Link>
       </div>
 
-      {/* GRID KONTEN MENGISI AREA TENGAH HINGGA BAWAH */}
-      <div className="grow grid gap-x-6 gap-y-8 grid-cols-1 sm:grid-cols-2 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-zinc-200 dark:[&::-webkit-scrollbar-thumb]:bg-zinc-800 [&::-webkit-scrollbar-thumb]:rounded-full">
-        {isLoading ? (
-          /* SKELETON LOADING BOX LANCIP */
-          [1, 2].map((n) => (
-            <div key={n} className="flex flex-col gap-3 animate-pulse">
-              <div className="w-full aspect-video bg-zinc-200 dark:bg-zinc-800" />
-              <div className="h-5 w-5/6 bg-zinc-300 dark:bg-zinc-700 mt-1" />
+      {/* AREA SCROLL HORIZONTAL (KE SAMPING) */}
+      <div className="grow flex items-center overflow-x-auto overflow-y-hidden pb-4 gap-5 snap-x snap-mandatory [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:bg-zinc-200 dark:[&::-webkit-scrollbar-thumb]:bg-zinc-800 [&::-webkit-scrollbar-thumb]:rounded-full">
+        {isLoadingInitial ? (
+          /* SKELETON LOADING HORIZONTAL */
+          [1, 2, 3].map((n) => (
+            <div key={n} className="flex flex-col gap-3 min-w-[240px] w-[240px] sm:min-w-[280px] sm:w-[280px] animate-pulse shrink-0">
+              <div className="w-full aspect-[4/3] bg-zinc-200 dark:bg-zinc-800 rounded-sm" />
+              <div className="h-3 w-12 bg-zinc-200 dark:bg-zinc-800" />
+              <div className="h-5 w-5/6 bg-zinc-300 dark:bg-zinc-700" />
+              <div className="h-3 w-full bg-zinc-200 dark:bg-zinc-800" />
             </div>
           ))
         ) : daftarKarya.length === 0 ? (
-          <div className="col-span-1 sm:col-span-2 text-center py-12 border border-dashed border-zinc-200 dark:border-zinc-800">
+          <div className="w-full text-center py-12 border border-dashed border-zinc-200 dark:border-zinc-800">
             <p className="text-sm text-zinc-400">Belum ada karya tulis yang diterbitkan.</p>
           </div>
         ) : (
-          daftarKarya.map((karya) => {
-            return (
+          <>
+            {/* DATA DAFTAR KARYA GESER SAMPING */}
+            {daftarKarya.map((karya) => (
               <Link 
                 key={karya.id}
                 href={`/blog/${karya.slug || karya.id}`}
-                className="flex flex-col gap-3 group block"
+                className="flex flex-col gap-2.5 group shrink-0 min-w-[240px] w-[240px] sm:min-w-[260px] sm:w-[260px] snap-always snap-center block"
               >
-                {/* SAMPUL KOTAK LANCIP PERFEK */}
                 {karya.cover_url && (
-                  <div className="relative w-full aspect-video overflow-hidden bg-zinc-100 dark:bg-zinc-900">
+                  <div className="relative w-full aspect-[4/3] overflow-hidden bg-zinc-100 dark:bg-zinc-900 rounded-sm">
                     <Image
                       src={karya.cover_url}
                       alt={`Sampul ${karya.title}`}
                       fill
-                      sizes="(max-width: 640px) 100vw, 50vw"
-                      className="object-cover transition-transform duration-500 group-hover:scale-105"
+                      sizes="(max-width: 640px) 240px, 260px"
+                      className="object-cover transition-transform duration-500 group-hover:scale-102"
+                      loading="lazy"
                     />
                   </div>
                 )}
 
-                {/* AREA JUDUL SAJA (TANPA BORDER / BG CARD) */}
-                <div>
-                  <h3 className="font-bold text-base text-zinc-900 dark:text-zinc-100 tracking-tight leading-snug group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors duration-200">
+                <div className="flex flex-col gap-1">
+                  {karya.category && (
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                      {karya.category}
+                    </span>
+                  )}
+
+                  <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 tracking-tight leading-snug group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors duration-200 line-clamp-2">
                     {karya.title}
                   </h3>
+
+                  {karya.summary && (
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed line-clamp-2 mt-0.5">
+                      {karya.summary}
+                    </p>
+                  )}
                 </div>
               </Link>
-            );
-          })
+            ))}
+
+            {/* TRIGGER INFINITE SCROLL DI UJUNG KANAN */}
+            <div ref={observerTarget} className="shrink-0 flex flex-col items-center justify-center min-w-[100px] h-full border-l border-zinc-200/60 dark:border-zinc-900/60 pl-4 snap-center">
+              {isLoadingMore ? (
+                <div className="h-4 w-4 animate-spin border-2 border-emerald-500 border-t-transparent rounded-full" />
+              ) : !hasMore && daftarKarya.length > 0 ? (
+                <p className="text-[9px] font-semibold text-zinc-400 tracking-wider uppercase text-center vertical-text writing-mode-vertical">
+                  Habis
+                </p>
+              ) : null}
+            </div>
+          </>
         )}
       </div>
 
     </div>
   );
 }
-
 // ==========================================
 // 5. KOMPONEN PORTFOLIO & CONTACT
 // ==========================================
@@ -242,15 +335,17 @@ function PortfolioContact({ tahun }: { tahun: number | string }) {
             Mari Terhubung
           </h2>
           <p className="text-base text-zinc-600 dark:text-zinc-400">
-            Punya ide proyek web, diskusi karya tulis, atau sekadar ingin menyapa? Silakan kirim pesan melalui tombol chat di atas atau hubungi langsung via email.
+            Punya ide proyek web, diskusi karya tulis, atau sekadar ingin menyapa? Silakan kirim pesan langsung melalui tombol chat di bawah ini.
           </p>
-          <div className="flex gap-4 mt-2">
-            <a 
-              href="mailto:adlanmadjied@example.com"
-              className="text-sm font-medium text-zinc-900 underline underline-offset-4 decoration-emerald-500/50 dark:text-zinc-50 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+          
+          {/* HANYA TOMBOL CHAT */}
+          <div className="mt-2">
+            <Link 
+              href="/customer/chat"
+              className="inline-block bg-emerald-600 px-6 py-3 text-sm font-semibold text-zinc-50 transition-all hover:bg-emerald-700 hover:scale-[1.02] active:scale-[0.98] dark:bg-emerald-500 dark:text-zinc-950 dark:hover:bg-emerald-400"
             >
-              Email saya
-            </a>
+              Chat Sekarang
+            </Link>
           </div>
         </div>
       </div>
@@ -373,9 +468,9 @@ export default function Home() {
           </div>
         </section>
         
-        {/* SLIDE 3: KARYA TULIS */}
+        {/* SLIDE 3: KARYA TULIS (Dinaikkan max-w-5xl agar grid 4 kolom pas dan sedap dipandang) */}
         <section ref={slideRefs[2]} className="flex h-screen w-full snap-start snap-always flex-col px-6 border-t border-zinc-100 dark:border-zinc-900">
-          <div className="mx-auto h-full w-full max-w-2xl">
+          <div className="mx-auto h-full w-full max-w-5xl">
             <KaryaTulis />
           </div>
         </section>

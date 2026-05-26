@@ -19,6 +19,7 @@ export type Database = {
           created_at: string | null
           id: string
           is_admin: boolean | null
+          is_read: boolean
           reply_to_id: string | null
           sender_id: string | null
           text: string
@@ -28,6 +29,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_admin?: boolean | null
+          is_read?: boolean
           reply_to_id?: string | null
           sender_id?: string | null
           text: string
@@ -37,6 +39,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_admin?: boolean | null
+          is_read?: boolean
           reply_to_id?: string | null
           sender_id?: string | null
           text?: string
@@ -129,6 +132,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      increment_views: { Args: { post_id: string }; Returns: undefined }
       is_admin: { Args: never; Returns: boolean }
     }
     Enums: {
