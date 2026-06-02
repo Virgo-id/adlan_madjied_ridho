@@ -56,16 +56,16 @@ export default function AdminLogin() {
         </Link>
       </div>
 
-      {/* Efek Ambient Glow Latar Belakang */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none select-none" />
+      {/* Efek Ambient Glow Latar Belakang - UBAH KE BIRU */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-blue-500/10 rounded-full blur-[120px] pointer-events-none select-none" />
 
       {/* FORM CARD */}
       <div className="w-full max-w-sm bg-zinc-950/60 backdrop-blur-xl p-8 rounded-2xl border border-zinc-900/80 shadow-2xl relative z-10 text-center animate-in fade-in zoom-in-95 duration-200">
         
-        {/* Header Form */}
+        {/* Header Form - UBAH KE BIRU */}
         <div className="mb-8 flex flex-col items-center">
-          <div className="w-8 h-8 rounded-lg bg-emerald-600/10 border border-emerald-500/20 flex items-center justify-center mb-4">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-emerald-400">
+          <div className="w-8 h-8 rounded-lg bg-blue-600/10 border border-blue-500/20 flex items-center justify-center mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-blue-400">
               <path fillRule="evenodd" d="M10 1a4.5 4.5 0 0 0-4.5 4.5V9H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-.5V5.5A4.5 4.5 0 0 0 10 1Zm3 8V5.5a3 3 0 1 0-6 0V9h6Z" clipRule="evenodd" />
             </svg>
           </div>
@@ -84,7 +84,7 @@ export default function AdminLogin() {
         )}
         
         <form onSubmit={handleLogin} className="space-y-5 text-left">
-          {/* Input Username */}
+          {/* Input Username - UBAH KE BIRU */}
           <div className="space-y-1.5">
             <label className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest block pl-1">Username</label>
             <div className="relative">
@@ -92,7 +92,7 @@ export default function AdminLogin() {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full bg-black/60 border border-zinc-800/80 rounded-xl py-3 px-4 text-white text-xs outline-none focus:border-emerald-600/80 focus:bg-black transition-all placeholder-zinc-700"
+                className="w-full bg-black/60 border border-zinc-800/80 rounded-xl py-3 px-4 text-white text-xs outline-none focus:border-blue-600/80 focus:bg-black transition-all placeholder-zinc-700"
                 placeholder="Masukkan username"
                 required
                 disabled={loading}
@@ -102,7 +102,7 @@ export default function AdminLogin() {
             </div>
           </div>
 
-          {/* Input Password */}
+          {/* Input Password - UBAH KE BIRU */}
           <div className="space-y-1.5">
             <label className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest block pl-1">Password</label>
             <div className="relative">
@@ -110,7 +110,7 @@ export default function AdminLogin() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-black/60 border border-zinc-800/80 rounded-xl py-3 px-4 text-white text-xs outline-none focus:border-emerald-600/80 focus:bg-black transition-all placeholder-zinc-700"
+                className="w-full bg-black/60 border border-zinc-800/80 rounded-xl py-3 px-4 text-white text-xs outline-none focus:border-blue-600/80 focus:bg-black transition-all placeholder-zinc-700"
                 placeholder="••••••••"
                 required
                 disabled={loading}
@@ -119,11 +119,11 @@ export default function AdminLogin() {
             </div>
           </div>
 
-          {/* Submit Button */}
+          {/* Submit Button - UBAH KE BIRU */}
           <button 
             disabled={loading}
             suppressHydrationWarning // JALUR PINTAS BUTTON
-            className="w-full bg-emerald-600 text-white py-3 rounded-xl text-xs font-bold hover:bg-emerald-500 disabled:opacity-50 disabled:hover:bg-emerald-600 transition-all flex items-center justify-center gap-2 mt-2 shadow-lg shadow-emerald-900/20"
+            className="w-full bg-blue-600 text-white py-3 rounded-xl text-xs font-bold hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 transition-all flex items-center justify-center gap-2 mt-2 shadow-lg shadow-blue-950/40"
           >
             {loading ? (
               <>

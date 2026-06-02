@@ -15,7 +15,6 @@ export default function AdminDashboard() {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
-        // Kalau ga ada user aktif, langsung tendang ke /loginadmin
         router.replace("/loginadmin");
       } else {
         setLoading(false);
@@ -42,35 +41,33 @@ export default function AdminDashboard() {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       
-      // Jika berhasil logout, arahkan ke halaman login admin
       router.replace("/loginadmin");
     } catch (err) {
       console.error("Gagal melakukan logout:", err);
     }
   };
 
-  // Jika sedang mengecek auth, berikan tampilan blank hitam/putih minimalis dulu
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-zinc-950">
-        <div className="text-sm font-medium text-zinc-400 animate-pulse">
+      <div className="flex min-h-screen items-center justify-center bg-zinc-950 font-sans">
+        <div className="text-xs font-medium tracking-widest uppercase text-zinc-600 animate-pulse">
           Memeriksa Autentikasi...
         </div>
       </div>
     );
   }
 
-  // 4. TAMPILAN UTAMA (Hanya muncul jika sudah lolos login)
+  // 4. TAMPILAN UTAMA (Warna diselaraskan ke Blue Solid & Dark Seamless)
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center bg-zinc-50 font-sans text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
+    <div className="relative flex min-h-screen flex-col items-center justify-center bg-zinc-950 font-sans text-zinc-50 antialiased">
       
-      {/* TOMBOL LOGOUT HIJAU BULAT DI POJOK ATAS KANAN */}
+      {/* TOMBOL LOGOUT BIRU BULAT DI POJOK ATAS KANAN */}
       <div className="absolute right-6 top-6 z-50">
         <button
           onClick={handleLogout}
           aria-label="Logout"
           title="Keluar dari Admin"
-          className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-600 text-zinc-50 shadow-md transition-all hover:bg-emerald-700 hover:scale-[1.05] active:scale-[0.95] dark:bg-emerald-500 dark:text-zinc-950 dark:hover:bg-emerald-400"
+          className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-white transition-all hover:bg-blue-500 hover:scale-[1.05] active:scale-[0.95] shadow-[0_0_20px_rgba(37,99,235,0.15)]"
         >
           {/* Ikon Keluar / Log Out */}
           <svg 
@@ -91,14 +88,14 @@ export default function AdminDashboard() {
       </div>
 
       {/* Konten Tengah */}
-      <div className="text-center space-y-2">
-        <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-500">
+      <div className="text-center space-y-3 select-none">
+        <p className="text-xs font-bold uppercase tracking-widest text-blue-500">
           Sistem Dashboard Admin
         </p>
-        <h1 className="text-6xl font-black tracking-tighter text-zinc-900 dark:text-zinc-50 font-mono">
+        <h1 className="text-6xl font-black tracking-tighter text-white font-mono">
           {waktu || "00:00:00"}
         </h1>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="text-sm text-zinc-500">
           Selamat datang kembali, Admin AMR.
         </p>
       </div>
