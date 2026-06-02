@@ -107,6 +107,7 @@ export type Database = {
           email: string
           full_name: string
           id: string
+          last_seen: string | null
           role: string
           updated_at: string
         }
@@ -116,6 +117,7 @@ export type Database = {
           email: string
           full_name: string
           id: string
+          last_seen?: string | null
           role?: string
           updated_at?: string
         }
@@ -125,6 +127,7 @@ export type Database = {
           email?: string
           full_name?: string
           id?: string
+          last_seen?: string | null
           role?: string
           updated_at?: string
         }
@@ -153,6 +156,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_admin_chat_list: {
+        Args: never
+        Returns: {
+          avatar_url: string
+          full_name: string
+          id: string
+          last_message: string
+          last_message_time: string
+          unread_count: number
+        }[]
+      }
       increment_views: { Args: { post_id: string }; Returns: undefined }
       is_admin: { Args: never; Returns: boolean }
     }

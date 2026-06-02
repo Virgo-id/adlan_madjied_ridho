@@ -37,14 +37,17 @@ export default function CustomerChat() {
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
 
-  // --- STATE BARU UNTUK REALTIME STATUS ---
+  // --- STATE REALTIME STATUS ---
   const [isAdminOnline, setIsAdminOnline] = useState(false);
   const [isAdminTyping, setIsAdminTyping] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatMenuRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const channelRef = useRef<any>(null); // Reference untuk menampung channel websocket
+  
+  // Membagi channel menjadi dua kebutuhan khusus
+  const roomChannelRef = useRef<any>(null); 
+  const globalPresenceChannelRef = useRef<any>(null); 
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -96,7 +99,6 @@ export default function CustomerChat() {
     );
   }, []);
 
-  // Fungsi menandai pesan masuk dari admin sebagai terbaca oleh customer
   const markMessagesAsRead = useCallback(async (userId: string) => {
     try {
       await supabase
@@ -110,7 +112,6 @@ export default function CustomerChat() {
     }
   }, []);
 
-  // Fetch data chat
   const fetchChatData = useCallback(async (userId: string) => {
     try {
       const { data: msgs } = await supabase
@@ -133,8 +134,6 @@ export default function CustomerChat() {
 
   // --- ENGINE UTAMA REAL-TIME PRESENCE & BROADCAST ---
   useEffect(() => {
-    let activeUserId: string | null = null;
-
     const init = async () => {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) {
@@ -142,9 +141,7 @@ export default function CustomerChat() {
         return;
       }
       setUser(authUser);
-      activeUserId = authUser.id;
 
-      // Ambil profil kustomer
       const { data: prof } = await supabase
         .from("profiles")
         .select("*")
@@ -154,21 +151,49 @@ export default function CustomerChat() {
       setProfile(prof);
       setNewName(prof?.full_name || "");
 
-      // Ambil pesan awal & langsung tandai pesan admin sebagai terbaca
       await fetchChatData(authUser.id);
       await markMessagesAsRead(authUser.id);
 
-      // Konfigurasi Channel terpadu dengan Presence Key 'user'
-      const channel = supabase.channel(`room-${authUser.id}`, {
+      // ==========================================
+      // 1. CHANNEL GLOBAL: Pantau Status Online Admin
+      // ==========================================
+      const globalChannel = supabase.channel("sidebar-global-realtime", {
         config: {
-          presence: { key: "user" },
+          presence: { key: authUser.id }, // Daftarkan id user ke dalam presence pool global
         },
       });
+      globalPresenceChannelRef.current = globalChannel;
 
-      channelRef.current = channel;
+      globalChannel
+        .on("presence", { event: "sync" }, () => {
+          const state = globalChannel.presenceState();
+          
+          // Cari apakah di dalam map presence global terdapat admin yang melacak diri mereka sendiri
+          const hasAdmin = Object.keys(state).some((key) => {
+            if (key === "admin-sidebar") return true;
+            
+            // Atau cek fallback jika id/role admin ditanam di dalam metadata track
+            const dataList = state[key] as any[];
+            return dataList.some((meta) => meta.role === "admin");
+          });
 
-      channel
-        // 1. Sinkronisasi Data Pesan (Postgres Changes)
+          setIsAdminOnline(hasAdmin);
+          if (!hasAdmin) setIsAdminTyping(false);
+        })
+        .subscribe(async (status) => {
+          if (status === "SUBSCRIBED") {
+            // Ikut melacak kehadiran user di channel global ini agar admin tahu customer sedang online
+            await globalChannel.track({ user_id: authUser.id, online_at: new Date().toISOString() });
+          }
+        });
+
+      // ==========================================
+      // 2. CHANNEL ROOM SPECIFIC: Mengurusi Pesan & Mengetik
+      // ==========================================
+      const roomChannel = supabase.channel(`room-${authUser.id}`);
+      roomChannelRef.current = roomChannel;
+
+      roomChannel
         .on(
           "postgres_changes",
           {
@@ -189,60 +214,56 @@ export default function CustomerChat() {
             });
           }
         )
-        // 2. Deteksi Apakah Admin Sedang Online di Room ini
-        .on("presence", { event: "sync" }, () => {
-          const state = channel.presenceState();
-          // Jika key 'admin' terdeteksi di dalam memori presence, maka admin sedang online
-          const isAdminInRoom = Object.prototype.hasOwnProperty.call(state, "admin");
-          setIsAdminOnline(isAdminInRoom);
-        })
-        // 3. Mendengarkan Sinyal Mengetik dari Admin
+        // Mengetik dikirim melalui broadcast personal room id agar tidak mengganggu customer lain
         .on("broadcast", { event: "typing" }, (payload) => {
-          if (payload.payload.isTyping) {
-            setIsAdminTyping(true);
-          } else {
-            setIsAdminTyping(false);
-          }
+          setIsAdminTyping(!!payload.payload.isTyping);
         })
-        .subscribe(async (status) => {
-          if (status === "SUBSCRIBED") {
-            // Lacak kehadiran customer ke sistem realtime room
-            await channel.track({ online_at: new Date().toISOString() });
-          }
-        });
+        .subscribe();
     };
 
     init();
 
     return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-      }
+      if (roomChannelRef.current) supabase.removeChannel(roomChannelRef.current);
+      if (globalPresenceChannelRef.current) supabase.removeChannel(globalPresenceChannelRef.current);
     };
   }, [fetchChatData, markMessagesAsRead]);
 
-  // --- FUNGSI MENGIRIM BROADCAST STATUS TYPING CUSTOMER ---
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setText(e.target.value);
+    if (!roomChannelRef.current) return;
 
-    if (!channelRef.current) return;
-
-    // Kirim sinyal ke admin bahwa customer sedang mengetik
-    channelRef.current.send({
+    // Sinyal mengetik dikirim global ke admin list, dan spesifik ke personal room ini
+    roomChannelRef.current.send({
       type: "broadcast",
       event: "typing",
       payload: { isTyping: true },
     });
 
+    if (globalPresenceChannelRef.current) {
+      globalPresenceChannelRef.current.send({
+        type: "broadcast",
+        event: "typing_global",
+        payload: { userId: user?.id, isTyping: true },
+      });
+    }
+
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
-    // Kirim sinyal berhenti mengetik jika dalam 2 detik tidak ada ketikan baru
     typingTimeoutRef.current = setTimeout(() => {
-      channelRef.current.send({
+      roomChannelRef.current?.send({
         type: "broadcast",
         event: "typing",
         payload: { isTyping: false },
       });
+
+      if (globalPresenceChannelRef.current && user?.id) {
+        globalPresenceChannelRef.current.send({
+          type: "broadcast",
+          event: "typing_global",
+          payload: { userId: user.id, isTyping: false },
+        });
+      }
     }, 2000);
   };
 
@@ -266,13 +287,21 @@ export default function CustomerChat() {
     e.preventDefault();
     if (!text.trim() || !user) return;
 
-    // Bersihkan timeout typing agar status segera dinonaktifkan setelah klik kirim
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    channelRef.current?.send({
+    
+    roomChannelRef.current?.send({
       type: "broadcast",
       event: "typing",
       payload: { isTyping: false },
     });
+
+    if (globalPresenceChannelRef.current && user?.id) {
+      globalPresenceChannelRef.current.send({
+        type: "broadcast",
+        event: "typing_global",
+        payload: { userId: user.id, isTyping: false },
+      });
+    }
 
     const messageToSend = text;
     const currentReplyId = replyingTo?.id || null;
@@ -372,8 +401,11 @@ export default function CustomerChat() {
     setDeleteTargetId(null);
   };
 
-  const formatMessageTime = (updatedAt: string) => {
+  const formatMessageTime = (updatedAt: string | null | undefined) => {
+    if (!updatedAt) return "Waktu tidak diketahui";
     const messageDate = new Date(updatedAt);
+    if (isNaN(messageDate.getTime())) return "Waktu tidak diketahui";
+
     const today = new Date();
     if (messageDate.toDateString() === today.toDateString()) {
       return messageDate.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
@@ -389,54 +421,54 @@ export default function CustomerChat() {
   const infoText = "Website ini cocok untuk digunakan sebagai komunikasi untuk kebutuhan website maupun hanya sekadar obrolan.";
 
   return (
-    <main className="h-screen bg-black text-zinc-300 flex flex-col relative overflow-hidden antialiased">
+    <main className="h-screen w-screen bg-zinc-950 text-zinc-300 flex flex-row overflow-hidden antialiased relative">
       
-      {/* HEADER */}
-      <header className="h-16 border-b border-zinc-900 flex items-center justify-between px-6 bg-zinc-900 flex-shrink-0 z-10">
-        <div className="flex flex-col min-w-0">
-          <h1 className="text-white font-bold text-sm tracking-wide truncate">Chat dengan Adlan Madjied Ridho</h1>
-          {/* INDIKATOR TEKS REAL-TIME STATUS ADMIN */}
-          <p className="text-[10px] font-mono tracking-wide min-h-[12px] mt-0.5">
-            {isAdminTyping ? (
-              <span className="text-sky-400 animate-pulse">sedang mengetik...</span>
-            ) : isAdminOnline ? (
-              <span className="text-emerald-500">online</span>
-            ) : (
-              <span className="text-zinc-500">offline</span>
-            )}
-          </p>
-        </div>
+      {/* SIDEBAR */}
+      <aside className="hidden md:flex w-72 h-full border-r border-zinc-900 p-6 flex-col bg-zinc-950 flex-shrink-0">
+        <h2 className="text-zinc-100 font-bold text-xs tracking-wide uppercase mb-4">Informasi</h2>
+        <p className="text-zinc-500 text-xs leading-relaxed">{infoText}</p>
+      </aside>
+
+      {/* AREA KANAN */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden bg-zinc-950 relative">
         
-        <div className="flex items-center gap-4">
-          <button onClick={() => setIsInfoOpen(!isInfoOpen)} className="md:hidden text-zinc-500">
-            <span className="text-xs border border-zinc-800 px-1.5 py-0.5 rounded-md">i</span>
-          </button>
+        {/* HEADER */}
+        <header className="h-16 flex items-center justify-between px-6 bg-transparent flex-shrink-0 z-10 w-full pt-4">
+          <div className="flex flex-col min-w-0">
+            <h1 className="text-white font-bold text-sm tracking-wide truncate">Adlan Madjied Ridho</h1>
+            <p className="text-[10px] font-mono tracking-wide min-h-[12px] mt-0.5">
+              {isAdminTyping ? (
+                <span className="text-sky-400 animate-pulse">sedang mengetik...</span>
+              ) : isAdminOnline ? (
+                <span className="text-emerald-500">online</span>
+              ) : (
+                <span className="text-zinc-600">offline</span>
+              )}
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            <button onClick={() => setIsInfoOpen(!isInfoOpen)} className="md:hidden text-zinc-500">
+              <span className="text-xs border border-zinc-800 px-1.5 py-0.5 rounded-md">i</span>
+            </button>
 
-          <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="flex items-center gap-2.5 hover:bg-zinc-800 p-1.5 rounded-xl transition-colors">
-            <span className="text-zinc-300 text-xs font-medium hidden md:inline">
-              {profile?.full_name || "Customer"}
-            </span>
-            {user?.user_metadata?.avatar_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={user.user_metadata.avatar_url} className="w-8 h-8 rounded-full border border-zinc-800 object-cover" alt="Avatar" referrerPolicy="no-referrer" />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs text-white font-bold uppercase">
-                {(profile?.full_name || "C").charAt(0)}
-              </div>
-            )}
-          </button>
-        </div>
-      </header>
+            <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="flex items-center gap-2.5 hover:bg-zinc-900 p-1.5 rounded-xl transition-colors">
+              <span className="text-zinc-300 text-xs font-medium hidden md:inline">
+                {profile?.full_name || "Customer"}
+              </span>
+              {user?.user_metadata?.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={user.user_metadata.avatar_url} className="w-8 h-8 rounded-full border border-zinc-800 object-cover" alt="Avatar" referrerPolicy="no-referrer" />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-xs text-white font-bold uppercase">
+                  {(profile?.full_name || "C").charAt(0)}
+                </div>
+              )}
+            </button>
+          </div>
+        </header>
 
-      {/* BODY AREA */}
-      <div className="flex flex-1 overflow-hidden bg-zinc-950">
-        {/* Sidebar Info (Desktop) */}
-        <aside className="hidden md:flex w-72 border-r border-zinc-900 p-6 flex-col bg-zinc-950">
-          <h2 className="text-zinc-100 font-bold text-xs tracking-wide uppercase mb-4">Informasi</h2>
-          <p className="text-zinc-500 text-xs leading-relaxed">{infoText}</p>
-        </aside>
-
-        {/* Chat Room Area */}
+        {/* AREA CHAT */}
         <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full p-4 md:p-6 overflow-hidden">
           {isInfoOpen && (
             <div className="md:hidden bg-zinc-900 p-4 rounded-xl mb-4 text-xs text-zinc-400 border border-zinc-800 animate-in fade-in duration-150">
@@ -444,7 +476,6 @@ export default function CustomerChat() {
             </div>
           )}
 
-          {/* Messages List Stream */}
           <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar">
             {messages.map((msg) => {
               const repliedMsg = getRepliedMessage(msg.reply_to_id);
@@ -463,7 +494,7 @@ export default function CustomerChat() {
                             if (e.key === "Enter") handleEditMessage(msg.id);
                             if (e.key === "Escape") { setEditingId(null); setEditText(""); }
                           }}
-                          className="flex-1 bg-zinc-950 text-white text-xs px-3 py-1.5 rounded-lg border border-zinc-800 focus:outline-none focus:border-blue-500 text-zinc-200"
+                          className="flex-1 bg-zinc-950 text-xs px-3 py-1.5 rounded-lg border border-zinc-800 focus:outline-none focus:border-blue-500 text-zinc-200"
                           autoFocus
                         />
                         <button onClick={() => handleEditMessage(msg.id)} className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg font-bold hover:bg-blue-500 transition-colors">
@@ -476,7 +507,6 @@ export default function CustomerChat() {
                     ) : (
                       <div className="relative group max-w-full flex flex-col">
                         
-                        {/* Tampilan Balasan Premium */}
                         {repliedMsg && (
                           <div className="px-3 py-1 text-[11px] bg-zinc-900 border-l-2 text-zinc-400 mb-[-4px] select-none rounded-t-lg max-w-full border-zinc-700">
                             <span className="block text-[9px] font-bold text-zinc-500 truncate">
@@ -486,7 +516,6 @@ export default function CustomerChat() {
                           </div>
                         )}
 
-                        {/* Bubble Chat Utama Solid Blue */}
                         <div
                           onClick={() => setOpenMenuId(openMenuId === msg.id ? null : msg.id)}
                           className={`p-3 px-4 text-xs leading-relaxed break-words cursor-pointer transition-colors border select-text ${
@@ -502,7 +531,6 @@ export default function CustomerChat() {
                           {msg.text}
                         </div>
 
-                        {/* Dropdown Menu Minimalis */}
                         {openMenuId === msg.id && (
                           <div 
                             ref={chatMenuRef}
@@ -536,13 +564,11 @@ export default function CustomerChat() {
                           </div>
                         )}
 
-                        {/* Info Waktu & Status Baca Centang Dua */}
                         <div className={`mt-1 flex items-center gap-1 text-[10px] text-zinc-500 font-mono select-none px-1 ${
                           msg.is_admin ? "justify-start" : "justify-end"
                         }`}>
-                          <span>{msg.updated_at ? formatMessageTime(msg.updated_at) : ""}</span>
+                          <span>{formatMessageTime(msg.updated_at)}</span>
                           
-                          {/* Status Baca Centang Dua Khusus Chat Customer */}
                           {!msg.is_admin && (
                             <span className="inline-flex ml-0.5">
                               {msg.status === "sending" ? (
@@ -568,11 +594,9 @@ export default function CustomerChat() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* INPUT FORM */}
           <form onSubmit={handleSendMessage} className="pt-3 mt-2 flex-shrink-0 bg-zinc-950">
             <div className="flex flex-col bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden focus-within:border-zinc-700 transition-colors">
               
-              {/* Preview Box Balasan Aktif */}
               {replyingTo && (
                 <div className="flex items-center justify-between bg-zinc-900 border-b border-zinc-800 px-4 py-1.5">
                   <div className="truncate pr-4 text-left border-l-2 border-blue-500 pl-2">
@@ -586,7 +610,6 @@ export default function CustomerChat() {
               )}
 
               <div className="flex items-center gap-2 px-3 py-1.5">
-                {/* MENGGUNAKAN handleInputChange UNTUK EMIT STATUS MENGETIK */}
                 <input
                   value={text}
                   onChange={handleInputChange}
@@ -606,46 +629,46 @@ export default function CustomerChat() {
             </div>
           </form>
         </div>
+
+        {/* DROPDOWN MENU HEADER */}
+        {isMenuOpen && (
+          <div className="absolute top-16 right-6 w-56 bg-zinc-900 border border-zinc-800 rounded-xl p-2 shadow-2xl z-50 overflow-hidden">
+            {isEditingName ? (
+              <div className="p-2 space-y-2">
+                <p className="text-[10px] text-zinc-500 font-bold uppercase">Ubah Nama</p>
+                <input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  className="w-full bg-zinc-950 text-white text-xs p-2 rounded border border-zinc-800 outline-none focus:border-blue-500"
+                />
+                <div className="flex gap-1.5">
+                  <button onClick={handleUpdateName} className="flex-1 bg-blue-600 text-white text-[10px] py-1.5 rounded-lg font-bold hover:bg-blue-500 transition-colors">Simpan</button>
+                  <button onClick={() => setIsEditingName(false)} className="px-2.5 bg-zinc-800 text-zinc-400 text-[10px] py-1.5 rounded-lg font-medium hover:bg-zinc-700 transition-colors">Batal</button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsEditingName(true)}
+                className="block w-full text-left text-zinc-300 text-xs p-3 hover:bg-zinc-800 rounded-lg transition-colors font-medium"
+              >
+                Edit Nama Panggilan
+              </button>
+            )}
+            <div className="h-px bg-zinc-800/60 my-1" />
+            <button
+              onClick={async () => {
+                await supabase.auth.signOut();
+                window.location.href = "/customer/login";
+              }}
+              className="block w-full text-left text-red-400 text-xs p-3 hover:bg-red-950/30 rounded-lg transition-colors font-medium"
+            >
+              Logout
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* DROPDOWN MENU HEADER */}
-      {isMenuOpen && (
-        <div className="absolute top-16 right-6 w-56 bg-zinc-900 border border-zinc-800 rounded-xl p-2 shadow-2xl z-50 overflow-hidden">
-          {isEditingName ? (
-            <div className="p-2 space-y-2">
-              <p className="text-[10px] text-zinc-500 font-bold uppercase">Ubah Nama</p>
-              <input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                className="w-full bg-zinc-950 text-white text-xs p-2 rounded border border-zinc-800 outline-none focus:border-blue-500"
-              />
-              <div className="flex gap-1.5">
-                <button onClick={handleUpdateName} className="flex-1 bg-blue-600 text-white text-[10px] py-1.5 rounded-lg font-bold hover:bg-blue-500 transition-colors">Simpan</button>
-                <button onClick={() => setIsEditingName(false)} className="px-2.5 bg-zinc-800 text-zinc-400 text-[10px] py-1.5 rounded-lg font-medium hover:bg-zinc-700 transition-colors">Batal</button>
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={() => setIsEditingName(true)}
-              className="block w-full text-left text-zinc-300 text-xs p-3 hover:bg-zinc-800 rounded-lg transition-colors font-medium"
-            >
-              Edit Nama Panggilan
-            </button>
-          )}
-          <div className="h-px bg-zinc-800/60 my-1" />
-          <button
-            onClick={async () => {
-              await supabase.auth.signOut();
-              window.location.href = "/customer/login";
-            }}
-            className="block w-full text-left text-red-400 text-xs p-3 hover:bg-red-950/30 rounded-lg transition-colors font-medium"
-          >
-            Logout
-          </button>
-        </div>
-      )}
-
-      {/* CUSTOM CONFIRMATION MODAL (DELETE MESSAGE) */}
+      {/* CUSTOM CONFIRMATION MODAL */}
       {deleteTargetId && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-100">
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-xs w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
