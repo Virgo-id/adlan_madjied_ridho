@@ -1,7 +1,7 @@
 // src/app/admin/chat/ChatListSidebar.tsx
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 
@@ -19,10 +19,27 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // --- STATE UNTUK REALTIME STATUS DI SIDEBAR ---
+  const [onlineUsers, setOnlineUsers] = useState<Record<string, boolean>>({});
+  const [typingUsers, setTypingUsers] = useState<Record<string, boolean>>({});
+  
+  const typingTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
+
   const fetchChatUsers = useCallback(async (silent = false) => {
     try {
       if (!silent) setLoading(true);
 
+      // 1. Ambil semua profil user terlebih dahulu
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url");
+
+      if (profilesError) {
+        setError(profilesError.message);
+        return;
+      }
+
+      // 2. Ambil seluruh riwayat pesan untuk dipetakan ke profil masing-masing
       const { data: messages, error: messagesError } = await supabase
         .from("messages")
         .select("sender_id, text, created_at, is_admin, is_read")
@@ -33,26 +50,7 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
         return;
       }
 
-      const senderIds = [
-        ...new Set(
-          messages?.map((m: any) => m.sender_id).filter((id: any) => id && id.trim?.() !== "") || []
-        ),
-      ];
-
-      if (senderIds.length === 0) {
-        setUsers([]);
-        return;
-      }
-
-      let profiles: any[] = [];
-      const { data: profilesData } = await supabase
-        .from("profiles")
-        .select("id, full_name, avatar_url")
-        .in("id", senderIds);
-      profiles = profilesData || [];
-
-      const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
-
+      // 3. Petakan unread_count per user
       const unreadCountsMap = new Map<string, number>();
       if (messages) {
         messages.forEach((msg: any) => {
@@ -63,25 +61,42 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
         });
       }
 
-      const userMap = new Map<string, ChatUser>();
+      // 4. Ambil pesan terakhir (pesan paling baru) untuk setiap user
+      const latestMessageMap = new Map<string, { text: string; created_at: string }>();
       if (messages) {
         messages.forEach((msg: any) => {
           const senderId = msg.sender_id;
-          if (senderId && !userMap.has(senderId)) {
-            const profile = profileMap.get(senderId);
-            userMap.set(senderId, {
-              id: senderId,
-              full_name: profile?.full_name || senderId,
-              avatar_url: profile?.avatar_url || null,
-              last_message: msg.text,
-              last_message_time: msg.created_at,
-              unread_count: unreadCountsMap.get(senderId) || 0,
+          if (senderId && !latestMessageMap.has(senderId)) {
+            latestMessageMap.set(senderId, {
+              text: msg.text,
+              created_at: msg.created_at,
             });
           }
         });
       }
 
-      setUsers(Array.from(userMap.values()));
+      // 5. Satukan data profil dengan data pesan terakhirnya
+      const detailedUsers: ChatUser[] = (profiles || []).map((profile: any) => {
+        const latestMsg = latestMessageMap.get(profile.id);
+        return {
+          id: profile.id,
+          full_name: profile.full_name || "User Tanpa Nama",
+          avatar_url: profile.avatar_url || null,
+          last_message: latestMsg?.text || null,
+          last_message_time: latestMsg?.created_at || null,
+          unread_count: unreadCountsMap.get(profile.id) || 0,
+        };
+      });
+
+      // 6. Urutkan: yang punya chat terbaru di paling atas, sisanya ditaruh di bawahnya
+      detailedUsers.sort((a, b) => {
+        if (a.last_message_time && b.last_message_time) {
+          return new Date(b.last_message_time).getTime() - new Date(a.last_message_time).getTime();
+        }
+        return a.last_message_time ? -1 : b.last_message_time ? 1 : 0;
+      });
+
+      setUsers(detailedUsers);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan");
     } finally {
@@ -93,9 +108,17 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
     fetchChatUsers(false);
   }, [fetchChatUsers]);
 
+  // --- REALTIME SUBSCRIPTION (MESSAGES + PRESENCE GLOBAL + TYPING BROADCAST) ---
   useEffect(() => {
-    const channel = supabase
-      .channel("sidebar-realtime")
+    // Membuat channel global untuk memantau aktivitas seluruh user di sidebar
+    const channel = supabase.channel("sidebar-global-realtime", {
+      config: {
+        presence: { key: "admin-sidebar" },
+      },
+    });
+
+    channel
+      // 1. Sinkronisasi pesan masuk/hapus
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "messages" },
@@ -103,10 +126,47 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
           fetchChatUsers(true);
         }
       )
-      .subscribe();
+      // 2. Pantau status Online/Offline global dari user
+      .on("presence", { event: "sync" }, () => {
+        const state = channel.presenceState();
+        const activeOnlineMap: Record<string, boolean> = {};
+
+        // Loop presences untuk menandai user id mana saja yang online
+        Object.keys(state).forEach((key) => {
+          // Asumsi di sisi client, key presence yang dikirim user berupa user id mereka sendiri atau mengandung info user id
+          if (key !== "admin-sidebar") {
+            activeOnlineMap[key] = true;
+          }
+        });
+        setOnlineUsers(activeOnlineMap);
+      })
+      // 3. Mendengarkan sinyal mengetik (Broadcast) global
+      .on("broadcast", { event: "typing_global" }, (payload) => {
+        const { userId, isTyping } = payload.payload;
+        if (!userId) return;
+
+        setTypingUsers((prev) => ({ ...prev, [userId]: isTyping }));
+
+        // Keamanan timeout pembersih otomatis jika user mendadak offline tanpa mengirim sinyal false
+        if (isTyping) {
+          if (typingTimeoutsRef.current[userId]) clearTimeout(typingTimeoutsRef.current[userId]);
+          
+          typingTimeoutsRef.current[userId] = setTimeout(() => {
+            setTypingUsers((prev) => ({ ...prev, [userId]: false }));
+          }, 3000);
+        }
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await channel.track({ active_at: new Date().toISOString() });
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
+      // Bersihkan semua timer timeout jika komponen unmount
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      Object.values(typingTimeoutsRef.current).forEach(clearTimeout);
     };
   }, [fetchChatUsers]);
 
@@ -126,11 +186,14 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
         </div>
       )}
 
-      {/* Spacing diubah ke space-y-4 agar antar-user memiliki jarak bernafas yang pas karena tanpa border kotak */}
       <div className="space-y-4 px-1">
         {users.map((user) => {
           const isActive = activeId === user.id;
           const nameInitial = (user.full_name || "U").charAt(0);
+          
+          // Ambil status spesifik untuk user ini
+          const isUserOnline = onlineUsers[user.id] || false;
+          const isUserTyping = typingUsers[user.id] || false;
 
           return (
             <Link
@@ -153,6 +216,11 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
                     {nameInitial}
                   </div>
                 )}
+
+                {/* Bulatan Indikator Online/Offline */}
+                <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-zinc-950 transition-colors duration-300 ${
+                  isUserOnline ? "bg-emerald-500" : "bg-zinc-700"
+                }`}></span>
               </div>
 
               {/* Detail Informasi Konten Chat */}
@@ -166,7 +234,7 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
                     {user.full_name || "User"}
                   </p>
                   
-                  {user.last_message_time && (
+                  {user.last_message_time && !isUserTyping && (
                     <span className={`text-[9px] font-mono select-none flex-shrink-0 transition-colors ${
                       isActive ? "text-blue-500 font-bold" : "text-zinc-600 group-hover:text-zinc-500"
                     }`}>
@@ -176,14 +244,17 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
                 </div>
 
                 <div className="flex justify-between items-center gap-2 mt-0.5">
+                  {/* Teks Terakhir / Status Mengetik Dinamis */}
                   <p className={`text-[11px] truncate transition-colors ${
-                    isActive ? "text-zinc-300" : "text-zinc-500 group-hover:text-zinc-400"
+                    isUserTyping 
+                      ? "text-sky-400 font-medium animate-pulse" 
+                      : isActive ? "text-zinc-300" : "text-zinc-500 group-hover:text-zinc-400"
                   }`}>
-                    {user.last_message || "Tidak ada pesan"}
+                    {isUserTyping ? "sedang mengetik..." : (user.last_message || "Tidak ada pesan")}
                   </p>
 
-                  {/* Indikator Pesan Masuk (Hanya muncul jika ada pesan masuk baru) */}
-                  {user.unread_count > 0 && (
+                  {/* Indikator Pesan Masuk */}
+                  {user.unread_count > 0 && !isUserTyping && (
                     <div className="bg-blue-600 text-white font-mono font-bold text-[9px] min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center flex-shrink-0 border border-blue-500 shadow-[0_0_10px_rgba(37,99,235,0.3)] animate-in zoom-in duration-200">
                       {user.unread_count}
                     </div>
