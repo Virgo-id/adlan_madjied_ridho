@@ -56,7 +56,7 @@ function HeroProfil({ umur, onSecretClick }: { umur: number | string; onSecretCl
       <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start text-center sm:text-left">
         <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-full bg-zinc-900 shadow-sm sm:h-32 sm:w-32">
           <Image
-            src="/image/profil/profil.jpg"
+            src="/image/profil/profile.jpg"
             alt="Adlan Madjied Ridho"
             fill
             sizes="(max-width: 640px) 112px, 128px"
