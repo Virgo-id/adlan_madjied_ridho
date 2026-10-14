@@ -1,6 +1,7 @@
+// src/app/admin/chat/[id]/ChatRoomContent.tsx
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
@@ -17,6 +18,68 @@ interface Message {
   status?: "sending" | "sent";
 }
 
+const ICONS = {
+  back: "M15.75 19.5L8.25 12l7.5-7.5",
+  close: "M6 18L18 6M6 6l12 12",
+  reply: "M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3",
+  edit: "M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125",
+  trash:
+    "M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0",
+} as const;
+
+function Icon({
+  d,
+  className = "w-4 h-4",
+  strokeWidth = 1.8,
+}: {
+  d: string;
+  className?: string;
+  strokeWidth?: number;
+}) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d={d} />
+    </svg>
+  );
+}
+
+function ModalOption({
+  icon,
+  label,
+  onClick,
+  danger = false,
+}: {
+  icon: string;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-xs font-semibold transition-colors ${
+        danger
+          ? "text-red-400 hover:bg-red-950/40"
+          : "text-zinc-200 hover:bg-zinc-800"
+      }`}
+    >
+      <Icon d={icon} className="h-4 w-4 flex-shrink-0" />
+      {label}
+    </button>
+  );
+}
+
 export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) {
   const router = useRouter();
   const senderId = chatUserId;
@@ -28,50 +91,71 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
   const [isLoading, setIsLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [menuMessage, setMenuMessage] = useState<Message | null>(null); // pesan yang dipilih di modal
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
-  // Realtime Status State
+  // Realtime status
   const [isUserOnline, setIsUserOnline] = useState(false);
   const [isUserTyping, setIsUserTyping] = useState(false);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const initialScrollDone = useRef(false);
+  const prevCountRef = useRef(0);
+  const isNearBottomRef = useRef(true);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const channelRef = useRef<any>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  // Lacak apakah admin sedang berada di dekat bawah (untuk pesan baru yang masuk)
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
   };
 
-  // Scroll otomatis setiap ada pesan baru
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  // Scroll:
+  // 1) Pertama kali obrolan terbuka -> langsung loncat ke paling bawah (tanpa animasi)
+  // 2) Pesan baru -> halus ke bawah, hanya jika pesan dari admin sendiri atau admin memang di bawah
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || isLoading) return;
 
-  // Proteksi Auth Admin
+    if (!initialScrollDone.current) {
+      el.scrollTop = el.scrollHeight;
+      initialScrollDone.current = true;
+      prevCountRef.current = messages.length;
+      return;
+    }
+
+    const added = messages.length > prevCountRef.current;
+    prevCountRef.current = messages.length;
+    if (!added) return;
+
+    const last = messages[messages.length - 1];
+    if (last?.is_admin || isNearBottomRef.current) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
+  }, [isLoading, messages]);
+
+  // Proteksi auth admin
   useEffect(() => {
     const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (!session) router.push("/loginadmin");
     };
     checkUser();
   }, [router]);
 
-  // Close menu dropdown saat klik di luar
+  // Tutup modal dengan tombol Escape
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setOpenMenuId(null);
-      }
+    if (!menuMessage) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuMessage(null);
     };
-    if (openMenuId) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [openMenuId]);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [menuMessage]);
 
   const isValidMessage = useCallback((item: any): item is Message => {
     return (
@@ -104,10 +188,7 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
       const idsToDelete = messagesToDelete.map((msg) => msg.id);
 
       try {
-        const { error } = await supabase
-          .from("messages")
-          .delete()
-          .in("id", idsToDelete);
+        const { error } = await supabase.from("messages").delete().in("id", idsToDelete);
 
         if (error) throw error;
 
@@ -118,43 +199,46 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
     }
   }, []);
 
-  const fetchRoomData = useCallback(async (silent = false) => {
-    try {
-      if (!silent) setIsLoading(true);
+  const fetchRoomData = useCallback(
+    async (silent = false) => {
+      try {
+        if (!silent) setIsLoading(true);
 
-      // Ambil Profil User
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("full_name, avatar_url")
-        .eq("id", senderId)
-        .single();
+        // Profil user
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("full_name, avatar_url")
+          .eq("id", senderId)
+          .single();
 
-      if (prof?.full_name) setProfileName(prof.full_name);
-      if (prof?.avatar_url) setProfileAvatar(prof.avatar_url);
+        if (prof?.full_name) setProfileName(prof.full_name);
+        if (prof?.avatar_url) setProfileAvatar(prof.avatar_url);
 
-      // Ambil Pesan
-      const { data: msgs } = await supabase
-        .from("messages")
-        .select("id, sender_id, text, is_admin, created_at, updated_at, reply_to_id, is_read")
-        .eq("sender_id", senderId)
-        .order("created_at", { ascending: true });
+        // Pesan
+        const { data: msgs } = await supabase
+          .from("messages")
+          .select("id, sender_id, text, is_admin, created_at, updated_at, reply_to_id, is_read")
+          .eq("sender_id", senderId)
+          .order("created_at", { ascending: true });
 
-      if (msgs) {
-        const validMessages = (msgs as any[]).filter(isValidMessage).map(msg => ({
-          ...msg,
-          status: "sent" as const
-        }));
-        setMessages(validMessages);
-        await enforceMessageLimit(validMessages);
+        if (msgs) {
+          const validMessages = (msgs as any[]).filter(isValidMessage).map((msg) => ({
+            ...msg,
+            status: "sent" as const,
+          }));
+          setMessages(validMessages);
+          await enforceMessageLimit(validMessages);
+        }
+      } catch (error) {
+        console.error("Gagal memuat data chat:", error);
+      } finally {
+        if (!silent) setIsLoading(false);
       }
-    } catch (error) {
-      console.error("Gagal memuat data chat:", error);
-    } finally {
-      if (!silent) setIsLoading(false);
-    }
-  }, [senderId, isValidMessage, enforceMessageLimit]);
+    },
+    [senderId, isValidMessage, enforceMessageLimit]
+  );
 
-  // Realtime Connection Setup
+  // Setup realtime
   useEffect(() => {
     fetchRoomData(false).then(() => {
       markMessagesAsRead();
@@ -169,7 +253,7 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
     channelRef.current = channel;
 
     channel
-      // 1. Menangani Perubahan Data Postgres secara Realtime
+      // 1. Perubahan data pesan
       .on(
         "postgres_changes",
         {
@@ -185,20 +269,15 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
 
             setMessages((prev) => {
               if (prev.some((m) => m.id === newMsg.id)) return prev;
-              const updated = [...prev, { ...newMsg, status: "sent" as const }];
-              return updated;
+              return [...prev, { ...newMsg, status: "sent" as const }];
             });
             markMessagesAsRead();
-          } 
-          
-          else if (payload.eventType === "UPDATE") {
+          } else if (payload.eventType === "UPDATE") {
             const updatedMsg = payload.new as Message;
             setMessages((prev) =>
               prev.map((m) => (m.id === updatedMsg.id ? { ...m, ...updatedMsg } : m))
             );
-          } 
-          
-          else if (payload.eventType === "DELETE") {
+          } else if (payload.eventType === "DELETE") {
             const deletedId = payload.old?.id;
             if (deletedId) {
               setMessages((prev) => prev.filter((m) => m.id !== deletedId));
@@ -206,19 +285,15 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
           }
         }
       )
-      // 2. Menangani Presence (Status Online/Offline)
+      // 2. Presence (online/offline)
       .on("presence", { event: "sync" }, () => {
         const state = channel.presenceState();
         const isUserInRoom = Object.prototype.hasOwnProperty.call(state, "user");
         setIsUserOnline(isUserInRoom);
       })
-      // 3. Menangani Broadcast (Status Mengetik dari User)
+      // 3. Broadcast (user sedang mengetik)
       .on("broadcast", { event: "typing" }, (payload) => {
-        if (payload.payload?.isTyping) {
-          setIsUserTyping(true);
-        } else {
-          setIsUserTyping(false);
-        }
+        setIsUserTyping(!!payload.payload?.isTyping);
       })
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
@@ -236,7 +311,7 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
     };
   }, [senderId, fetchRoomData, markMessagesAsRead]);
 
-  // Mengirim Sinyal Mengetik Admin ke User
+  // Kirim sinyal mengetik admin ke user
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInputMessage(e.target.value);
 
@@ -265,7 +340,11 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
     if (messageDate.toDateString() === today.toDateString()) {
       return messageDate.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
     }
-    return messageDate.toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) + " " + messageDate.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+    return (
+      messageDate.toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) +
+      " " +
+      messageDate.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
+    );
   };
 
   const handleDeleteMessage = async (messageId: string) => {
@@ -279,17 +358,18 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
   };
 
   const handleClearAllMessages = async () => {
-    const firstConfirmation = confirm(`Apakah Anda yakin ingin menghapus SEMUA pesan dengan ${profileName}?`);
+    const firstConfirmation = confirm(
+      `Apakah Anda yakin ingin menghapus SEMUA pesan dengan ${profileName}?`
+    );
     if (!firstConfirmation) return;
 
-    const secondConfirmation = confirm("Tindakan ini permanen dan riwayat obrolan tidak dapat dikembalikan. Lanjutkan?");
+    const secondConfirmation = confirm(
+      "Tindakan ini permanen dan riwayat obrolan tidak dapat dikembalikan. Lanjutkan?"
+    );
     if (!secondConfirmation) return;
 
     try {
-      const { error } = await supabase
-        .from("messages")
-        .delete()
-        .eq("sender_id", senderId);
+      const { error } = await supabase.from("messages").delete().eq("sender_id", senderId);
 
       if (error) throw error;
 
@@ -307,7 +387,9 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
     if (error) {
       alert("Gagal mengubah pesan");
     } else {
-      setMessages((prev) => prev.map((msg) => msg.id === messageId ? { ...msg, text: editText } : msg));
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === messageId ? { ...msg, text: editText } : msg))
+      );
       setEditingId(null);
       setEditText("");
     }
@@ -393,45 +475,48 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
   };
 
   return (
-    <div className="h-full bg-zinc-950 text-zinc-300 flex flex-col overflow-hidden antialiased">
-      {/* Header Room Chat - Diperbarui agar bg menyatu dan tanpa border */}
-      <header className="p-4 bg-zinc-950 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
-          <Link href="/admin/chat" className="p-2 text-zinc-400 hover:text-white transition-colors rounded-xl hover:bg-zinc-900 md:hidden">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-            </svg>
+    <div className="flex h-full flex-col overflow-hidden bg-zinc-950 text-zinc-300 antialiased">
+      {/* HEADER */}
+      <header className="flex flex-shrink-0 items-center justify-between bg-zinc-950 p-4">
+        <div className="flex min-w-0 items-center gap-3">
+          {/* Tombol kembali: panah < saja (hanya di HP) */}
+          <Link
+            href="/admin/chat"
+            aria-label="Kembali"
+            className="-ml-1 rounded-xl p-2 text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-white md:hidden"
+          >
+            <Icon d={ICONS.back} className="h-5 w-5" strokeWidth={2.2} />
           </Link>
-          
-          {/* FOTO PROFIL */}
+
+          {/* Foto profil */}
           <div className="relative flex-shrink-0">
             {profileAvatar ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img 
-                src={profileAvatar} 
-                alt={profileName} 
-                className="w-9 h-9 rounded-full object-cover border border-zinc-900"
+              <img
+                src={profileAvatar}
+                alt={profileName}
+                className="h-9 w-9 rounded-full object-cover"
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <div className="w-9 h-9 rounded-full bg-zinc-900 flex items-center justify-center text-zinc-200 text-xs font-bold uppercase border border-zinc-800">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-800 text-xs font-bold uppercase text-zinc-200">
                 {profileName.charAt(0)}
               </div>
             )}
-            
-            {/* INDIKATOR ONLINE/OFFLINE */}
-            <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-zinc-950 inline-block transition-colors duration-300 ${
-              isUserOnline ? "bg-emerald-500" : "bg-zinc-600"
-            }`}></span>
+
+            {/* Indikator online/offline */}
+            <span
+              className={`absolute bottom-0 right-0 inline-block h-2.5 w-2.5 rounded-full border-2 border-zinc-950 transition-colors duration-300 ${
+                isUserOnline ? "bg-emerald-500" : "bg-zinc-600"
+              }`}
+            ></span>
           </div>
 
           <div className="min-w-0">
-            <h2 className="text-zinc-100 font-bold text-sm tracking-wide truncate">
-              {profileName}
-            </h2>
-            <p className="text-[10px] font-medium tracking-wide mt-0.5 min-h-[12px]">
+            <h2 className="truncate text-sm font-bold tracking-wide text-zinc-100">{profileName}</h2>
+            <p className="mt-0.5 min-h-[12px] text-[10px] font-medium tracking-wide">
               {isUserTyping ? (
-                <span className="text-sky-400 animate-pulse">sedang mengetik...</span>
+                <span className="animate-pulse text-sky-400">sedang mengetik...</span>
               ) : isUserOnline ? (
                 <span className="text-emerald-500">online</span>
               ) : (
@@ -444,142 +529,172 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
         <button
           onClick={handleClearAllMessages}
           title="Hapus semua pesan"
-          className="p-2 text-zinc-400 hover:text-red-400 hover:bg-red-950/40 transition-all rounded-xl border border-transparent"
+          className="rounded-xl p-2 text-zinc-400 transition-colors hover:bg-red-950/40 hover:text-red-400"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-          </svg>
+          <Icon d={ICONS.trash} className="h-4 w-4" />
           <span className="sr-only">Hapus Semua Pesan</span>
         </button>
       </header>
 
-      {/* Area Teks Pesan */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-zinc-950 custom-scrollbar">
+      {/* AREA PESAN */}
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="custom-scrollbar flex-1 space-y-4 overflow-y-auto bg-zinc-950 p-4 md:p-6"
+      >
         {isLoading ? (
-          <div className="h-full flex items-center justify-center text-zinc-600 text-xs font-medium tracking-widest uppercase">
+          <div className="flex h-full items-center justify-center text-xs font-medium uppercase tracking-widest text-zinc-600">
             Sinkronisasi...
           </div>
         ) : messages.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-zinc-600 text-xs font-medium italic">
+          <div className="flex h-full items-center justify-center text-xs font-medium italic text-zinc-600">
             Tidak ada pesan di obrolan ini.
           </div>
         ) : (
-          <>
-            {messages.map((msg) => {
-              const repliedMsg = getRepliedMessage(msg.reply_to_id);
+          messages.map((msg) => {
+            const repliedMsg = getRepliedMessage(msg.reply_to_id);
 
-              return (
-                <div key={msg.id} className={`flex ${msg.is_admin ? "justify-end" : "justify-start"} items-end gap-2`}>
-                  <div className={`flex flex-col w-full max-w-[85%] sm:max-w-[70%] ${msg.is_admin ? "items-end" : "items-start"}`}>
-                    
-                    {editingId === msg.id ? (
-                      <div className="flex gap-2 w-full bg-zinc-900 p-2 rounded-xl border border-zinc-800">
-                        <input
-                          type="text"
-                          value={editText}
-                          onChange={(e) => setEditText(e.target.value)}
-                          className="flex-1 bg-zinc-950 text-white text-xs px-3 py-1.5 rounded-lg border border-zinc-800 focus:outline-none focus:border-blue-500 text-zinc-200"
-                          autoFocus
-                        />
-                        <button onClick={() => handleEditMessage(msg.id)} className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg font-bold hover:bg-blue-500 transition-colors">
-                          OK
-                        </button>
-                        <button onClick={() => { setEditingId(null); setEditText(""); }} className="px-3 py-1.5 bg-zinc-800 text-zinc-400 text-xs rounded-lg font-medium hover:bg-zinc-700">
-                          Batal
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="relative group max-w-full flex flex-col">
-                        
-                        {repliedMsg && (
-                          <div className="px-3 py-1 text-[11px] bg-zinc-900 border-l-2 text-zinc-400 mb-[-4px] select-none rounded-t-lg max-w-full border-zinc-700">
-                            <span className="block text-[9px] font-bold text-zinc-500 truncate">
-                              @{repliedMsg.is_admin ? "Anda" : profileName}
-                            </span>
-                            <p className="truncate text-zinc-400 text-[10px] mt-0.5">{repliedMsg.text}</p>
-                          </div>
-                        )}
-
-                        <div
-                          onClick={() => setOpenMenuId(openMenuId === msg.id ? null : msg.id)}
-                          className={`p-3 px-4 text-xs leading-relaxed break-words cursor-pointer transition-colors border select-text ${
-                            msg.is_admin
-                              ? `bg-blue-700 border-blue-600 text-white hover:bg-blue-600 ${
-                                  repliedMsg ? "rounded-b-xl rounded-tl-xl" : "rounded-2xl rounded-tr-none"
-                                }`
-                              : `bg-zinc-900 border-zinc-800 text-zinc-200 hover:bg-zinc-800 ${
-                                  repliedMsg ? "rounded-b-xl rounded-tr-xl" : "rounded-2xl rounded-tl-none"
-                                }`
-                          }`}
-                        >
-                          {msg.text}
+            return (
+              <div
+                key={msg.id}
+                className={`flex ${msg.is_admin ? "justify-end" : "justify-start"} items-end gap-2`}
+              >
+                <div
+                  className={`flex w-full max-w-[85%] flex-col sm:max-w-[70%] ${
+                    msg.is_admin ? "items-end" : "items-start"
+                  }`}
+                >
+                  {editingId === msg.id ? (
+                    <div className="flex w-full gap-2 rounded-xl bg-zinc-900 p-2">
+                      <input
+                        type="text"
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        className="flex-1 rounded-lg bg-zinc-950 px-3 py-1.5 text-xs text-zinc-200 outline-none focus:ring-1 focus:ring-blue-500"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => handleEditMessage(msg.id)}
+                        className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-blue-500"
+                      >
+                        OK
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingId(null);
+                          setEditText("");
+                        }}
+                        className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:bg-zinc-700"
+                      >
+                        Batal
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="relative flex max-w-full flex-col">
+                      {repliedMsg && (
+                        <div className="mb-[-4px] max-w-full select-none rounded-t-lg border-l-2 border-zinc-700 bg-zinc-900 px-3 py-1 text-[11px] text-zinc-400">
+                          <span className="block truncate text-[9px] font-bold text-zinc-500">
+                            @{repliedMsg.is_admin ? "Anda" : profileName}
+                          </span>
+                          <p className="mt-0.5 truncate text-[10px] text-zinc-400">{repliedMsg.text}</p>
                         </div>
+                      )}
 
-                        <div className={`mt-1 flex items-center gap-1 text-[10px] text-zinc-500 font-mono select-none pointer-events-none px-1 ${
+                      {/* Klik bubble -> buka modal pilihan */}
+                      <div
+                        onClick={() => {
+                          if (msg.status === "sending") return;
+                          setMenuMessage(msg);
+                        }}
+                        className={`cursor-pointer select-text break-words p-3 px-4 text-xs leading-relaxed transition-colors ${
+                          msg.is_admin
+                            ? `bg-blue-700 text-white hover:bg-blue-600 ${
+                                repliedMsg ? "rounded-b-xl rounded-tl-xl" : "rounded-2xl rounded-tr-none"
+                              }`
+                            : `bg-zinc-900 text-zinc-200 hover:bg-zinc-800 ${
+                                repliedMsg ? "rounded-b-xl rounded-tr-xl" : "rounded-2xl rounded-tl-none"
+                              }`
+                        }`}
+                      >
+                        {msg.text}
+                      </div>
+
+                      <div
+                        className={`pointer-events-none mt-1 flex select-none items-center gap-1 px-1 font-mono text-[10px] text-zinc-500 ${
                           msg.is_admin ? "justify-end" : "justify-start"
-                        }`}>
-                          <span>{msg.updated_at ? formatMessageTime(msg.updated_at) : ""}</span>
-                          {msg.is_admin && (
-                            <span className="inline-flex ml-0.5">
-                              {msg.status === "sending" ? (
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-zinc-600">
-                                  <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clipRule="evenodd" />
-                                </svg>
-                              ) : (
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={`w-3.5 h-3.5 ${msg.is_read ? "text-sky-400" : "text-zinc-500"}`}>
-                                  <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clipRule="evenodd" />
-                                  <path fillRule="evenodd" d="M13.204 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-2.5-2.5a.75.75 0 1 1 1.06-1.06l1.894 1.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clipRule="evenodd" />
-                                </svg>
-                              )}
-                            </span>
-                          )}
-                        </div>
-
-                        {openMenuId === msg.id && (
-                          <div ref={menuRef} className={`absolute top-full mt-1 w-24 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl z-20 overflow-hidden ${
-                            msg.is_admin ? "right-0" : "left-0"
-                          }`}>
-                            <button type="button" onClick={() => { setReplyingTo(msg); setOpenMenuId(null); }} className="flex w-full text-[11px] px-3 py-1.5 text-zinc-300 hover:bg-zinc-800 font-medium">
-                              Balas
-                            </button>
-                            {msg.is_admin && (
-                              <>
-                                <button type="button" onClick={() => { setEditingId(msg.id); setEditText(msg.text); setOpenMenuId(null); }} className="flex w-full text-[11px] px-3 py-1.5 text-zinc-300 hover:bg-zinc-800 font-medium border-t border-zinc-800">
-                                  Edit
-                                </button>
-                                <button type="button" onClick={() => { handleDeleteMessage(msg.id); setOpenMenuId(null); }} className="flex w-full text-[11px] px-3 py-1.5 text-red-400 hover:bg-red-950 font-medium border-t border-zinc-800">
-                                  Hapus
-                                </button>
-                              </>
+                        }`}
+                      >
+                        <span>{msg.updated_at ? formatMessageTime(msg.updated_at) : ""}</span>
+                        {msg.is_admin && (
+                          <span className="ml-0.5 inline-flex">
+                            {msg.status === "sending" ? (
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 20 20"
+                                fill="currentColor"
+                                className="h-3 w-3 text-zinc-600"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                            ) : (
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 20 20"
+                                fill="currentColor"
+                                className={`h-3.5 w-3.5 ${msg.is_read ? "text-sky-400" : "text-zinc-500"}`}
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z"
+                                  clipRule="evenodd"
+                                />
+                                <path
+                                  fillRule="evenodd"
+                                  d="M13.204 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-2.5-2.5a.75.75 0 1 1 1.06-1.06l1.894 1.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
                             )}
-                          </div>
+                          </span>
                         )}
-                        
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
-              );
-            })}
-            <div ref={messagesEndRef} />
-          </>
+              </div>
+            );
+          })
         )}
       </div>
 
-      {/* Form Input Pesan - Diperbarui agar bg menyatu dan border luar hilang */}
-      <form onSubmit={handleSendMessage} className="p-3 bg-zinc-950 flex-shrink-0">
-        <div className="max-w-4xl mx-auto flex flex-col bg-zinc-900 rounded-xl overflow-hidden transition-colors">
+      {/* FORM INPUT */}
+      <form
+        onSubmit={handleSendMessage}
+        className="flex-shrink-0 bg-zinc-950 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+      >
+        <div className="mx-auto flex max-w-4xl flex-col overflow-hidden rounded-xl bg-zinc-900">
           {replyingTo && (
-            <div className="flex items-center justify-between bg-zinc-900/50 border-b border-zinc-800/60 px-4 py-1.5">
-              <div className="truncate pr-4 text-left border-l-2 border-blue-500 pl-2">
-                <span className="block text-[9px] font-bold text-zinc-400 uppercase tracking-wider">
+            <div className="flex items-center justify-between bg-zinc-800/50 px-4 py-1.5">
+              <div className="truncate border-l-2 border-blue-500 pl-2 pr-4 text-left">
+                <span className="block text-[9px] font-bold uppercase tracking-wider text-zinc-400">
                   Membalas {replyingTo.is_admin ? "Anda" : profileName}
                 </span>
-                <span className="text-[11px] text-zinc-400 italic truncate block mt-0.5">
+                <span className="mt-0.5 block truncate text-[11px] italic text-zinc-400">
                   {replyingTo.text}
                 </span>
               </div>
-              <button type="button" onClick={() => setReplyingTo(null)} className="text-zinc-500 hover:text-zinc-300 text-xs p-1">✕</button>
+              <button
+                type="button"
+                onClick={() => setReplyingTo(null)}
+                aria-label="Batalkan balasan"
+                className="p-1 text-zinc-500 hover:text-zinc-300"
+              >
+                <Icon d={ICONS.close} className="h-3.5 w-3.5" strokeWidth={2} />
+              </button>
             </div>
           )}
 
@@ -587,17 +702,75 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
             <input
               value={inputMessage}
               onChange={handleInputChange}
-              className="flex-1 bg-transparent text-zinc-200 text-xs outline-none py-2 px-1 placeholder-zinc-600"
+              className="flex-1 bg-transparent px-1 py-2 text-xs text-zinc-200 outline-none placeholder-zinc-600"
               placeholder={replyingTo ? "Tulis balasan..." : "Ketik pesan..."}
             />
-            <button type="submit" disabled={!inputMessage.trim()} className="bg-blue-600 text-white border border-blue-500 p-2 rounded-lg hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:border-transparent w-8 h-8 flex items-center justify-center flex-shrink-0 transition-all">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
+            <button
+              type="submit"
+              disabled={!inputMessage.trim()}
+              aria-label="Kirim"
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-blue-600 p-2 text-white transition-colors hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5">
                 <path d="M3.478 2.404a.75.75 0 0 0-.926.941l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.404Z" />
               </svg>
             </button>
           </div>
         </div>
       </form>
+
+      {/* MODAL PILIHAN PESAN (tanpa blur: overlay solid supaya ringan) */}
+      {menuMessage && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 p-3 md:items-center"
+          onClick={() => setMenuMessage(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Pilihan pesan"
+            className="w-full max-w-xs rounded-2xl bg-zinc-900 p-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="truncate px-3 pb-2 pt-2 text-[11px] text-zinc-500">{menuMessage.text}</p>
+
+            <ModalOption
+              icon={ICONS.reply}
+              label="Balas"
+              onClick={() => {
+                setReplyingTo(menuMessage);
+                setMenuMessage(null);
+              }}
+            />
+
+            {menuMessage.is_admin && (
+              <>
+                <ModalOption
+                  icon={ICONS.edit}
+                  label="Edit"
+                  onClick={() => {
+                    setEditingId(menuMessage.id);
+                    setEditText(menuMessage.text);
+                    setMenuMessage(null);
+                  }}
+                />
+                <ModalOption
+                  icon={ICONS.trash}
+                  label="Hapus"
+                  danger
+                  onClick={() => {
+                    const id = menuMessage.id;
+                    setMenuMessage(null);
+                    handleDeleteMessage(id);
+                  }}
+                />
+              </>
+            )}
+
+            <ModalOption icon={ICONS.close} label="Batal" onClick={() => setMenuMessage(null)} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

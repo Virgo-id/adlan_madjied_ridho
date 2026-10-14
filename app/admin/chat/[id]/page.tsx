@@ -8,10 +8,10 @@ export default function JointChatPage({ params }: { params: Promise<{ id: string
   const { id } = use(params);
 
   return (
-    // Lepaskan grid dan sidebar dari sini. 
-    // File ini sekarang murni hanya memanggil isi chat room yang akan mengisi kolom kanan {children} pada layout.tsx
     <div className="w-full h-full overflow-hidden">
-      <ChatRoomContent chatUserId={id} />
+      {/* key={id}: setiap pindah obrolan, ruang chat dibuat ulang dari kondisi bersih
+          sehingga langsung tampil di pesan paling bawah */}
+      <ChatRoomContent key={id} chatUserId={id} />
     </div>
   );
 }
