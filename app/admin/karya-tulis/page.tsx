@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/lib/supabase"; 
-import { Database } from "@/lib/database.types";
+import { supabase } from "@/lib/supabase";
 import PostFormModal from "../components/PostFormModal";
 import PostView from "../components/PostView";
 
@@ -17,13 +16,16 @@ export interface Post {
   cover_url: string | null;
 }
 
+// Bentuk data mentah dari tabel `posts` (status masih string bebas dari database)
+type PostRow = Omit<Post, "status"> & { status: string | null };
+
 const PAGE_SIZE = 6;
 
 export default function KaryaTulisDashboard() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
-  
+
   const [modal, setModal] = useState<{ isOpen: boolean; mode: 'add' | 'edit'; data?: Post | null }>({ isOpen: false, mode: 'add' });
   const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id: string; cover_url?: string } | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -38,24 +40,24 @@ export default function KaryaTulisDashboard() {
   const fetchPosts = useCallback(async (pageNum: number, isReset = false) => {
     const from = pageNum * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
-    
+
     const { data, error } = await supabase
       .from('posts')
       .select('*')
       .order('created_at', { ascending: false })
       .range(from, to);
-    
+
     if (error) {
       showToast("Gagal memuat data", "error");
       return;
     }
 
     if (data) {
-      const raw = data as Database['public']['Tables']['posts']['Row'][];
-      const normalized = raw.map(d => ({
+      const raw = data as PostRow[];
+      const normalized: Post[] = raw.map(d => ({
         ...d,
-        status: d.status === 'Published' || d.status === 'Draft' ? (d.status as "Published" | "Draft") : null,
-      })) as Post[];
+        status: d.status === 'Published' || d.status === 'Draft' ? d.status : null,
+      }));
 
       setPosts(prev => isReset ? normalized : [...prev, ...normalized]);
       setHasMore(normalized.length === PAGE_SIZE);
@@ -68,17 +70,17 @@ export default function KaryaTulisDashboard() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchPosts(0, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); 
+  }, []);
 
   const handleSubmit = async (data: Partial<Post> & { id?: string }) => {
     try {
       if (modal.mode === 'edit' && data.id) {
-        await supabase.from('posts').update(data as Database['public']['Tables']['posts']['Update']).eq('id', data.id);
+        await supabase.from('posts').update(data).eq('id', data.id);
       } else {
-        await supabase.from('posts').insert([data as Database['public']['Tables']['posts']['Insert']]);
+        await supabase.from('posts').insert([data]);
       }
       showToast(`Berhasil ${modal.mode === 'add' ? 'menambahkan' : 'mengubah'} karya tulis!`);
-      
+
       setPage(0);
       setModal({ isOpen: false, mode: 'add', data: null });
       fetchPosts(0, true);
@@ -100,7 +102,7 @@ export default function KaryaTulisDashboard() {
 
       await supabase.from('posts').delete().eq('id', confirmDelete.id);
       showToast("Karya tulis berhasil dihapus.");
-      
+
       setConfirmDelete(null);
       setPage(0);
       fetchPosts(0, true);
@@ -161,7 +163,7 @@ export default function KaryaTulisDashboard() {
 
       {hasMore && (
         <div className="text-center mt-12">
-            <button onClick={() => { setPage(p => p + 1); fetchPosts(page + 1); }} className="text-zinc-500 text-[10px] uppercase tracking-widest hover:text-white">Muat Lainnya</button>
+          <button onClick={() => { setPage(p => p + 1); fetchPosts(page + 1); }} className="text-zinc-500 text-[10px] uppercase tracking-widest hover:text-white">Muat Lainnya</button>
         </div>
       )}
     </main>

@@ -138,7 +138,7 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ slu
         {/* ISI KONTEN UTAMA (RATA KANAN-KIRI & MARGIN PARAGRAF ASLI 1.5REM) */}
         <div className="text-base text-zinc-700 dark:text-zinc-300 leading-relaxed text-justify break-words mb-8">
           {karya.content
-            ? karya.content.split("\n").map((paragraf, index) => {
+            ? karya.content.split("\n").map((paragraf: string, index: number) => {
                 if (paragraf.trim() === "") return <div key={index} className="h-4" />;
                 
                 return (

@@ -103,10 +103,10 @@ export default function CustomerChat() {
     try {
       await supabase
         .from("messages")
-        .update({ is_read: true } as any)
+        .update({ is_read: true })
         .eq("sender_id", userId)
         .eq("is_admin", true)
-        .eq("is_read" as any, false);
+        .eq("is_read", false);
     } catch (error) {
       console.error("Gagal memperbarui status terbaca customer:", error);
     }
@@ -121,7 +121,7 @@ export default function CustomerChat() {
         .order("created_at", { ascending: true });
 
       if (msgs) {
-        const validMessages = (msgs as any[]).filter(isValidMessage).map(msg => ({
+        const validMessages = msgs.filter(isValidMessage).map(msg => ({
           ...msg,
           status: "sent" as const
         }));
@@ -173,8 +173,13 @@ export default function CustomerChat() {
             if (key === "admin-sidebar") return true;
             
             // Atau cek fallback jika id/role admin ditanam di dalam metadata track
-            const dataList = state[key] as any[];
-            return dataList.some((meta) => meta.role === "admin");
+            const dataList = state[key];
+            return Array.isArray(dataList) && dataList.some((meta) =>
+              typeof meta === "object" &&
+              meta !== null &&
+              "role" in meta &&
+              meta.role === "admin"
+            );
           });
 
           setIsAdminOnline(hasAdmin);
@@ -333,7 +338,7 @@ export default function CustomerChat() {
           is_admin: false,
           reply_to_id: currentReplyId,
           is_read: false,
-        } as any)
+        })
         .select()
         .single();
 

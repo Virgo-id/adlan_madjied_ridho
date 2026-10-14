@@ -222,7 +222,7 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
           .order("created_at", { ascending: true });
 
         if (msgs) {
-          const validMessages = (msgs as any[]).filter(isValidMessage).map((msg) => ({
+          const validMessages = msgs.filter(isValidMessage).map((msg) => ({
             ...msg,
             status: "sent" as const,
           }));
