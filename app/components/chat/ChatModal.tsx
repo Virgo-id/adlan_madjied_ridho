@@ -10,8 +10,10 @@ import {
 import Image from "next/image";
 import { supabase } from "@/lib/supabase";
 import ChatAttachment from "@/app/components/chat/ChatAttachment";
+import TombolNotifikasi from "@/app/components/chat/TombolNotifikasi";
 import {
   removeChatAttachment,
+  removeChatAttachments,
   uploadChatAttachment,
 } from "@/lib/chat-attachments";
 
@@ -262,36 +264,6 @@ function Dekor({
   );
 }
 
-/* ---------- Tombol kartu untuk dropdown bubble ---------- */
-
-function ItemMenu({
-  ikon,
-  onClick,
-  children,
-  warnaIkon = "text-cyan-300",
-}: {
-  ikon: React.ReactNode;
-  onClick: () => void;
-  children: React.ReactNode;
-  warnaIkon?: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      onDoubleClick={(e) => e.stopPropagation()}
-      className="flex min-h-12 w-full cursor-pointer touch-manipulation items-center gap-3 rounded-2xl border border-blue-400/20 bg-blue-500/10 px-4 py-3 text-left text-sm font-semibold text-blue-100 transition duration-200 hover:border-cyan-300/50 hover:bg-blue-500/20 active:scale-95 active:bg-blue-500/30"
-    >
-      <span className={`shrink-0 ${warnaIkon}`}>{ikon}</span>
-      {children}
-    </button>
-  );
-}
-
 /* ---------- Komponen utama ---------- */
 
 export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
@@ -302,6 +274,7 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
   const [profile, setProfile] = useState<any>(null);
   const [memuat, setMemuat] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
 
   // Infinite scroll
   const [hasMore, setHasMore] = useState(true);
@@ -315,7 +288,6 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
   // Aksi bubble chat
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
   // Konfirmasi hapus
@@ -328,8 +300,9 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const chatMenuRef = useRef<HTMLDivElement>(null);
   const headerMenuRef = useRef<HTMLDivElement>(null);
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggeredRef = useRef(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const roomChannelRef = useRef<any>(null);
   const globalPresenceChannelRef = useRef<any>(null);
@@ -345,6 +318,13 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
   const hasMoreRef = useRef(true);
   const loadingOlderRef = useRef(false);
   const replyDimintaRef = useRef<Set<string>>(new Set());
+
+  useEffect(
+    () => () => {
+      if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+    },
+    []
+  );
 
   /* ---- Posisi scroll ---- */
   useIsoLayoutEffect(() => {
@@ -386,8 +366,8 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
         setDeleteTargetId(null);
       } else if (isMenuOpen) {
         setIsMenuOpen(false);
-      } else if (openMenuId) {
-        setOpenMenuId(null);
+      } else if (selectedMessageIds.length > 0) {
+        setSelectedMessageIds([]);
       } else if (editingId) {
         // Escape saat edit ditangani oleh input edit
       } else {
@@ -400,37 +380,7 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
       document.removeEventListener("keydown", tekan);
       document.body.style.overflow = overflowLama;
     };
-  }, [open, onClose, deleteTargetId, isMenuOpen, openMenuId, editingId]);
-
-  /* ---- Tutup dropdown bubble saat klik di luar ---- */
-  useEffect(() => {
-    if (!openMenuId) return;
-    const klikLuar = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      // Klik pada bubble ditangani sendiri oleh bubble (klik = buka, dobel klik = tutup)
-      if (target.closest("[data-bubble]")) return;
-      if (
-        chatMenuRef.current &&
-        !chatMenuRef.current.contains(target as Node)
-      ) {
-        setOpenMenuId(null);
-      }
-    };
-    document.addEventListener("mousedown", klikLuar);
-    return () => document.removeEventListener("mousedown", klikLuar);
-  }, [openMenuId]);
-
-  /* ---- Pastikan dropdown bubble terlihat penuh ---- */
-  useEffect(() => {
-    if (!openMenuId) return;
-    const frame = requestAnimationFrame(() => {
-      chatMenuRef.current?.scrollIntoView({
-        block: "nearest",
-        behavior: "smooth",
-      });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [openMenuId]);
+  }, [open, onClose, deleteTargetId, isMenuOpen, selectedMessageIds.length, editingId]);
 
   /* ---- Tutup dropdown header saat klik di luar ---- */
   useEffect(() => {
@@ -467,12 +417,19 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
 
   const markMessagesAsRead = useCallback(async (userId: string) => {
     try {
-      await supabase
+      const { error } = await supabase
         .from("messages")
         .update({ is_read: true })
         .eq("sender_id", userId)
         .eq("is_admin", true)
         .eq("is_read", false);
+      if (error) throw error;
+
+      try {
+        await navigator.clearAppBadge?.();
+      } catch (error) {
+        console.error("Gagal menghapus badge notifikasi:", error);
+      }
     } catch (error) {
       console.error("Gagal memperbarui status terbaca customer:", error);
     }
@@ -625,7 +582,7 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
     scrollAwalRef.current = true;
     scrollModeRef.current = "none";
     anchorRef.current = null;
-    setOpenMenuId(null);
+    setSelectedMessageIds([]);
 
     const init = async () => {
       const {
@@ -933,6 +890,7 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
       );
       setEditingId(null);
       setEditText("");
+      setSelectedMessageIds([]);
     }
   };
 
@@ -1000,8 +958,93 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
     }
 
     setMessages((prev) => prev.filter((item) => item.id !== message.id));
-    setOpenMenuId(null);
+    setSelectedMessageIds((prev) => prev.filter((id) => id !== message.id));
     return true;
+  };
+
+  const toggleSelectedMessage = (messageId: string, selectOnly = false) => {
+    setSelectedMessageIds((current) => {
+      if (selectOnly) {
+        return current.includes(messageId) ? current : [...current, messageId];
+      }
+      return current.includes(messageId)
+        ? current.filter((id) => id !== messageId)
+        : [...current, messageId];
+    });
+  };
+
+  const startMessagePress = (message: Message) => {
+    if (message.status === "sending" || editingId === message.id) return;
+    if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+    longPressTriggeredRef.current = false;
+    pressTimerRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      toggleSelectedMessage(message.id, true);
+    }, 500);
+  };
+
+  const finishMessagePress = () => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+  };
+
+  const handleMessageClick = (message: Message) => {
+    if (editingId === message.id) return;
+    if (longPressTriggeredRef.current) {
+      longPressTriggeredRef.current = false;
+      return;
+    }
+    if (messages.some((item) => selectedMessageIds.includes(item.id))) {
+      toggleSelectedMessage(message.id);
+    }
+  };
+
+  const deleteSelectedMessages = async () => {
+    if (!user) return;
+    const targets = messages.filter(
+      (message) =>
+        selectedMessageIds.includes(message.id) &&
+        !message.is_admin &&
+        message.sender_id === user.id
+    );
+    if (targets.length === 0) return;
+    if (!confirm(`Hapus ${targets.length} pesan yang dipilih?`)) return;
+
+    try {
+      await removeChatAttachments(
+        targets
+          .map((message) => message.attachment_path)
+          .filter((path): path is string => typeof path === "string")
+      );
+      const ids = targets.map((message) => message.id);
+      const { data, error } = await supabase
+        .from("messages")
+        .delete()
+        .in("id", ids)
+        .eq("sender_id", user.id)
+        .select("id");
+      if (error) throw error;
+      const deletedIds = new Set((data ?? []).map((row) => row.id));
+      if (deletedIds.size !== ids.length) {
+        throw new Error("Sebagian pesan tidak dapat dihapus oleh policy database.");
+      }
+
+      setMessages((prev) => prev.filter((message) => !deletedIds.has(message.id)));
+      setSelectedMessageIds((prev) => prev.filter((id) => !deletedIds.has(id)));
+    } catch (error) {
+      console.error("Gagal menghapus pesan yang dipilih:", error);
+      alert(error instanceof Error ? error.message : "Gagal menghapus pesan.");
+    }
+  };
+
+  const editSelectedMessage = () => {
+    const message = messages.find((item) => item.id === selectedMessageIds[0]);
+    if (!message || message.is_admin || message.sender_id !== user?.id || !message.text) return;
+    setEditingId(message.id);
+    setEditText(message.text);
+    setSelectedMessageIds([]);
   };
 
   const handleLogout = async () => {
@@ -1054,6 +1097,19 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
     if (ditemukan) return ditemukan;
     return replyMap[replyToId] ?? null;
   };
+
+  const selectedMessages = messages.filter((message) =>
+    selectedMessageIds.includes(message.id)
+  );
+  const selectedMessage = selectedMessages[0];
+  const canEditSelected =
+    selectedMessages.length === 1 &&
+    !!selectedMessage?.text &&
+    !selectedMessage.is_admin &&
+    selectedMessage.sender_id === user?.id;
+  const canDeleteSelected = selectedMessages.some(
+    (message) => !message.is_admin && message.sender_id === user?.id
+  );
 
   if (!open) return null;
 
@@ -1327,7 +1383,30 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
                         <div
                           className={`flex w-full max-w-[85%] flex-col sm:max-w-[75%] ${
                             msg.is_admin ? "items-start" : "items-end"
+                          } ${
+                            selectedMessageIds.includes(msg.id)
+                              ? "rounded-xl bg-cyan-300/10 p-1 ring-2 ring-cyan-300/80"
+                              : ""
                           }`}
+                          onPointerDown={() => startMessagePress(msg)}
+                          onPointerUp={finishMessagePress}
+                          onPointerLeave={finishMessagePress}
+                          onPointerCancel={() => {
+                            finishMessagePress();
+                            longPressTriggeredRef.current = false;
+                          }}
+                          onContextMenu={(event) => {
+                            if (editingId === msg.id) return;
+                            event.preventDefault();
+                            toggleSelectedMessage(msg.id, true);
+                          }}
+                          onClick={() => handleMessageClick(msg)}
+                          onDoubleClick={(event) => {
+                            if (editingId === msg.id) return;
+                            event.preventDefault();
+                            finishMessagePress();
+                            toggleSelectedMessage(msg.id, true);
+                          }}
                         >
                           {editingId === msg.id ? (
                             <div className="flex w-full gap-2 rounded-2xl border border-blue-400/30 bg-blue-950/80 p-2">
@@ -1383,36 +1462,13 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
                                 </div>
                               )}
 
-                              {msg.text && (
-                                <div
-                                  data-bubble
-                                  onMouseDown={(e) => {
-                                    if (e.detail > 1) e.preventDefault();
-                                  }}
-                                  onClick={() => setOpenMenuId(msg.id)}
-                                  onDoubleClick={() => setOpenMenuId(null)}
-                                  className={`cursor-pointer touch-manipulation select-text break-words px-4 py-2.5 text-sm leading-relaxed transition duration-200 hover:scale-[1.01] ${
-                                    msg.is_admin
-                                      ? `border border-blue-400/20 bg-blue-500/10 text-blue-50 hover:bg-blue-500/20 ${
-                                          repliedMsg
-                                            ? "rounded-b-2xl rounded-tr-2xl"
-                                            : "rounded-2xl rounded-tl-md"
-                                        }`
-                                      : `bg-linear-to-br from-blue-600 to-cyan-500 text-white ${
-                                          repliedMsg
-                                            ? "rounded-b-2xl rounded-tl-2xl"
-                                            : "rounded-2xl rounded-tr-md"
-                                        }`
-                                  }`}
-                                >
-                                  {msg.text}
-                                </div>
-                              )}
                               {msg.attachment_path && (
                                 <ChatAttachment
                                   path={msg.attachment_path}
                                   name={msg.attachment_name || "Lampiran"}
                                   type={msg.attachment_type ?? null}
+                                  selectionMode={selectedMessages.length > 0}
+                                  withText={!!msg.text}
                                   onDelete={
                                     !msg.is_admin && msg.sender_id === user?.id
                                       ? () => handleRemoveAttachment(msg)
@@ -1421,60 +1477,28 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
                                 />
                               )}
 
-                              {openMenuId === msg.id && (
+                              {msg.text && (
                                 <div
-                                  ref={chatMenuRef}
-                                  role="menu"
-                                  className={`absolute top-full z-30 mt-1.5 w-44 space-y-1.5 overflow-hidden rounded-3xl border border-blue-400/30 bg-linear-to-br from-blue-950 to-zinc-950 p-2 ${
-                                    msg.is_admin ? "left-0" : "right-0"
+                                  data-bubble
+                                  className={`cursor-pointer touch-manipulation select-none break-words px-4 py-2.5 text-sm leading-relaxed transition duration-200 hover:scale-[1.01] ${
+                                    msg.is_admin
+                                      ? `border border-blue-400/20 bg-blue-500/10 text-blue-50 hover:bg-blue-500/20 ${
+                                          msg.attachment_path
+                                            ? "border-t-0 rounded-b-2xl rounded-t-none"
+                                            : repliedMsg
+                                              ? "rounded-b-2xl rounded-tr-2xl"
+                                              : "rounded-2xl rounded-tl-md"
+                                        }`
+                                      : `bg-linear-to-br from-blue-600 to-cyan-500 text-white ${
+                                          msg.attachment_path
+                                            ? "rounded-b-2xl rounded-t-none"
+                                            : repliedMsg
+                                              ? "rounded-b-2xl rounded-tl-2xl"
+                                              : "rounded-2xl rounded-tr-md"
+                                        }`
                                   }`}
                                 >
-                                  <ItemMenu
-                                    ikon={<IconBalas className="h-5 w-5" />}
-                                    onClick={() => {
-                                      setReplyingTo(msg);
-                                      setOpenMenuId(null);
-                                    }}
-                                  >
-                                    Balas
-                                  </ItemMenu>
-
-                                  {!msg.is_admin && msg.attachment_path && (
-                                    <ItemMenu
-                                      ikon={<IconSampah className="h-5 w-5" />}
-                                      warnaIkon="text-sky-300"
-                                      onClick={() => void handleRemoveAttachment(msg)}
-                                    >
-                                      Hapus pesan
-                                    </ItemMenu>
-                                  )}
-
-                                  {!msg.is_admin && (
-                                    <>
-                                      <ItemMenu
-                                        ikon={<IconPen className="h-5 w-5" />}
-                                        onClick={() => {
-                                          setEditingId(msg.id);
-                                          setEditText(msg.text);
-                                          setOpenMenuId(null);
-                                        }}
-                                      >
-                                        Edit
-                                      </ItemMenu>
-                                      <ItemMenu
-                                        ikon={
-                                          <IconSampah className="h-5 w-5" />
-                                        }
-                                        warnaIkon="text-sky-300"
-                                        onClick={() => {
-                                          setDeleteTargetId(msg.id);
-                                          setOpenMenuId(null);
-                                        }}
-                                      >
-                                        Hapus
-                                      </ItemMenu>
-                                    </>
-                                  )}
+                                  {msg.text}
                                 </div>
                               )}
 
@@ -1513,6 +1537,63 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
                 </div>
               )}
             </div>
+
+            {selectedMessages.length > 0 && (
+              <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-t border-cyan-300/20 bg-blue-950/95 px-2 py-2 sm:gap-2 sm:px-4">
+                <span className="mr-auto shrink-0 px-2 text-xs font-semibold text-cyan-100">
+                  {selectedMessages.length} dipilih
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedMessageIds([])}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-2 text-xs text-blue-100 hover:bg-blue-500/20"
+                  aria-label="Batal memilih pesan"
+                >
+                  <IconClose className="h-4 w-4" />
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedMessages.length === 1) {
+                      setDeleteTargetId(selectedMessages[0].id);
+                      setSelectedMessageIds([]);
+                    } else {
+                      void deleteSelectedMessages();
+                    }
+                  }}
+                  disabled={!canDeleteSelected}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-2 text-xs text-red-300 hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <IconSampah className="h-4 w-4" />
+                  Hapus
+                </button>
+                <button
+                  type="button"
+                  onClick={editSelectedMessage}
+                  disabled={!canEditSelected}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-2 text-xs text-blue-100 hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <IconPen className="h-4 w-4" />
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedMessages.length !== 1) return;
+                    setReplyingTo(selectedMessages[0]);
+                    setSelectedMessageIds([]);
+                  }}
+                  disabled={selectedMessages.length !== 1}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-2 text-xs text-blue-100 hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <IconBalas className="h-4 w-4" />
+                  Balas
+                </button>
+              </div>
+            )}
+
+            <TombolNotifikasi />
 
             {/* ----- Form kirim ----- */}
             <form

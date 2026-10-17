@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import ChatAttachment from "@/app/components/chat/ChatAttachment";
+import TombolNotifikasi from "@/app/components/chat/TombolNotifikasi";
+import { segarkanBadgeAdmin } from "@/lib/push";
 import {
   removeChatAttachments,
   removeChatAttachment,
@@ -100,28 +102,55 @@ function Icon({
   );
 }
 
-function ModalOption({
-  icon,
-  label,
-  onClick,
-  danger = false,
+function MessageTimestamp({
+  msg,
+  className = "",
 }: {
-  icon: string;
-  label: string;
-  onClick: () => void;
-  danger?: boolean;
+  msg: Message;
+  className?: string;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex w-full cursor-pointer items-center gap-3 rounded-2xl px-3 py-3 text-left text-xs font-semibold transition-colors ${
-        danger ? "text-red-400 hover:bg-red-950/40" : "text-blue-100 hover:bg-blue-500/15"
-      }`}
+    <span
+      className={`pointer-events-none inline-flex shrink-0 select-none items-center gap-1 whitespace-nowrap font-mono text-[11px] leading-none ${className}`}
     >
-      <Icon d={icon} className="h-4 w-4 flex-shrink-0" />
-      {label}
-    </button>
+      <span>{msg.updated_at ? formatWaktuPesan(msg.updated_at) : ""}</span>
+      {msg.is_admin && (
+        <span className="ml-0.5 inline-flex">
+          {msg.status === "sending" ? (
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className="h-3 w-3 text-blue-300/70"
+            >
+              <path
+                fillRule="evenodd"
+                d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z"
+                clipRule="evenodd"
+              />
+            </svg>
+          ) : (
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className={`h-3.5 w-3.5 ${msg.is_read ? "text-cyan-200" : "text-blue-200/70"}`}
+            >
+              <path
+                fillRule="evenodd"
+                d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z"
+                clipRule="evenodd"
+              />
+              <path
+                fillRule="evenodd"
+                d="M13.204 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-2.5-2.5a.75.75 0 1 1 1.06-1.06l1.894 1.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z"
+                clipRule="evenodd"
+              />
+            </svg>
+          )}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -179,7 +208,9 @@ const MessageBubble = memo(function MessageBubble({
   repliedMsg,
   profileName,
   isEditing,
-  onOpenMenu,
+  selectionMode,
+  selected,
+  onSelectMessage,
   onSaveEdit,
   onCancelEdit,
   onDeleteAttachment,
@@ -188,17 +219,73 @@ const MessageBubble = memo(function MessageBubble({
   repliedMsg: Message | null;
   profileName: string;
   isEditing: boolean;
-  onOpenMenu: (msg: Message) => void;
+  selectionMode: boolean;
+  selected: boolean;
+  onSelectMessage: (id: string, selectOnly?: boolean) => void;
   onSaveEdit: (id: string, text: string) => void;
   onCancelEdit: () => void;
   onDeleteAttachment: (message: Message) => Promise<boolean>;
 }) {
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggeredRef = useRef(false);
+
+  useEffect(
+    () => () => {
+      if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+    },
+    []
+  );
+
+  const isImageAttachment =
+    !!msg.attachment_path && (msg.attachment_type?.startsWith("image/") ?? false);
+
   return (
     <div className={`flex ${msg.is_admin ? "justify-end" : "justify-start"} items-end gap-2`}>
       <div
         className={`flex w-full max-w-[85%] flex-col sm:max-w-[70%] ${
           msg.is_admin ? "items-end" : "items-start"
-        }`}
+        } ${selected ? "rounded-xl bg-cyan-300/10 p-1 ring-2 ring-cyan-300/80" : ""}`}
+        onPointerDown={() => {
+          if (msg.status === "sending" || isEditing) return;
+          if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+          longPressTriggeredRef.current = false;
+          pressTimerRef.current = setTimeout(() => {
+            longPressTriggeredRef.current = true;
+            onSelectMessage(msg.id, true);
+          }, 500);
+        }}
+        onPointerUp={() => {
+          if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+          pressTimerRef.current = null;
+        }}
+        onPointerLeave={() => {
+          if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+          pressTimerRef.current = null;
+        }}
+        onPointerCancel={() => {
+          if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+          pressTimerRef.current = null;
+          longPressTriggeredRef.current = false;
+        }}
+        onContextMenu={(event) => {
+          if (isEditing) return;
+          event.preventDefault();
+          onSelectMessage(msg.id, true);
+        }}
+        onClick={() => {
+          if (isEditing) return;
+          if (longPressTriggeredRef.current) {
+            longPressTriggeredRef.current = false;
+            return;
+          }
+          if (selectionMode) onSelectMessage(msg.id);
+        }}
+        onDoubleClick={(event) => {
+          if (isEditing) return;
+          event.preventDefault();
+          if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+          onSelectMessage(msg.id, true);
+        }}
       >
         {isEditing ? (
           <EditRow id={msg.id} initialText={msg.text} onSave={onSaveEdit} onCancel={onCancelEdit} />
@@ -213,78 +300,74 @@ const MessageBubble = memo(function MessageBubble({
               </div>
             )}
 
-            {/* Klik bubble -> buka modal pilihan */}
+            {msg.attachment_path &&
+              (isImageAttachment ? (
+                <div className="inline-flex max-w-full overflow-hidden rounded-md">
+                  <ChatAttachment
+                    path={msg.attachment_path}
+                    name={msg.attachment_name || "Lampiran"}
+                    type={msg.attachment_type ?? null}
+                    onDelete={() => onDeleteAttachment(msg)}
+                    selectionMode={selectionMode}
+                    withText={!!msg.text}
+                  />
+                </div>
+              ) : !msg.text ? (
+                <div
+                  className={`max-w-full overflow-hidden rounded-md p-1 ${
+                    msg.is_admin
+                      ? "bg-linear-to-br from-blue-600 to-cyan-500"
+                      : "border border-blue-400/20 bg-blue-950/80"
+                  }`}
+                >
+                  <ChatAttachment
+                    path={msg.attachment_path}
+                    name={msg.attachment_name || "Lampiran"}
+                    type={msg.attachment_type ?? null}
+                    onDelete={() => onDeleteAttachment(msg)}
+                    selectionMode={selectionMode}
+                  />
+                </div>
+              ) : (
+                <div className="self-end overflow-hidden rounded-md">
+                  <ChatAttachment
+                    path={msg.attachment_path}
+                    name={msg.attachment_name || "Lampiran"}
+                    type={msg.attachment_type ?? null}
+                    onDelete={() => onDeleteAttachment(msg)}
+                    selectionMode={selectionMode}
+                    withText={!!msg.text}
+                  />
+                </div>
+              ))}
+
             {msg.text && (
               <div
-                onClick={() => {
-                  if (msg.status === "sending") return;
-                  onOpenMenu(msg);
-                }}
-                className={`cursor-pointer select-text break-words p-3 px-4 text-xs leading-relaxed ${
+                className={`cursor-pointer select-none break-words p-3 px-4 text-xs leading-relaxed ${
                   msg.is_admin
                     ? `bg-linear-to-br from-blue-600 to-cyan-500 text-white ${
-                        repliedMsg ? "rounded-b-xl rounded-tl-xl" : "rounded-2xl rounded-tr-none"
+                        msg.attachment_path
+                          ? "rounded-b-xl rounded-t-none"
+                          : repliedMsg ? "rounded-b-xl rounded-tl-xl" : "rounded-2xl rounded-tr-none"
                       }`
                     : `border border-blue-400/20 bg-blue-950/80 text-blue-50 ${
-                        repliedMsg ? "rounded-b-xl rounded-tr-xl" : "rounded-2xl rounded-tl-none"
+                        msg.attachment_path
+                          ? "border-t-0 rounded-b-xl rounded-t-none"
+                          : repliedMsg ? "rounded-b-xl rounded-tr-xl" : "rounded-2xl rounded-tl-none"
                       }`
                 }`}
               >
                 {msg.text}
               </div>
             )}
-            {msg.attachment_path && (
-              <ChatAttachment
-                path={msg.attachment_path}
-                name={msg.attachment_name || "Lampiran"}
-                type={msg.attachment_type ?? null}
-                onDelete={() => onDeleteAttachment(msg)}
-              />
+            {(msg.text || msg.attachment_path) && (
+              <div className="mt-1 flex w-full justify-end px-1">
+                <MessageTimestamp
+                  msg={msg}
+                  className={msg.is_admin ? "text-white/70" : "text-blue-200/70"}
+                />
+              </div>
             )}
-
-            <div
-              className={`pointer-events-none mt-1 flex select-none items-center gap-1 px-1 font-mono text-[10px] text-blue-300/70 ${
-                msg.is_admin ? "justify-end" : "justify-start"
-              }`}
-            >
-              <span>{msg.updated_at ? formatWaktuPesan(msg.updated_at) : ""}</span>
-              {msg.is_admin && (
-                <span className="ml-0.5 inline-flex">
-                  {msg.status === "sending" ? (
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      className="h-3 w-3 text-blue-300/60"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  ) : (
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      className={`h-3.5 w-3.5 ${msg.is_read ? "text-cyan-200" : "text-blue-200/60"}`}
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z"
-                        clipRule="evenodd"
-                      />
-                      <path
-                        fillRule="evenodd"
-                        d="M13.204 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-2.5-2.5a.75.75 0 1 1 1.06-1.06l1.894 1.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  )}
-                </span>
-              )}
-            </div>
           </div>
         )}
       </div>
@@ -430,7 +513,7 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
   const [profileAvatar, setProfileAvatar] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [menuMessage, setMenuMessage] = useState<Message | null>(null); // pesan yang dipilih di modal
+  const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
   // Realtime status
@@ -524,15 +607,15 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
     checkUser();
   }, [router]);
 
-  // Tutup modal dengan tombol Escape
+  // Escape membatalkan pilihan pesan sebelum keluar dari ruang chat.
   useEffect(() => {
-    if (!menuMessage) return;
+    if (selectedMessageIds.length === 0) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenuMessage(null);
+      if (e.key === "Escape") setSelectedMessageIds([]);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [menuMessage]);
+  }, [selectedMessageIds.length]);
 
   const markMessagesAsRead = useCallback(async () => {
     try {
@@ -542,6 +625,7 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
         .eq("sender_id", senderId)
         .eq("is_admin", false)
         .eq("is_read", false);
+      void segarkanBadgeAdmin();
     } catch (error) {
       console.error("Gagal memperbarui status terbaca:", error);
     }
@@ -601,7 +685,10 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
   const fetchRoomData = useCallback(
     async (silent = false) => {
       try {
-        if (!silent) setIsLoading(true);
+        if (!silent) {
+          setSelectedMessageIds([]);
+          setIsLoading(true);
+        }
 
         // Profil user
         const { data: prof } = await supabase
@@ -815,35 +902,6 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
     channelRef.current?.send({ type: "broadcast", event: "typing", payload: { isTyping: false } });
   }, []);
 
-  const handleDeleteMessage = async (messageId: string) => {
-    if (!confirm("Hapus pesan ini?")) return;
-
-    try {
-      const { data: message, error: fetchError } = await supabase
-        .from("messages")
-        .select("attachment_path")
-        .eq("id", messageId)
-        .eq("sender_id", senderId)
-        .maybeSingle();
-      if (fetchError) throw fetchError;
-      if (message?.attachment_path) {
-        await removeChatAttachment(message.attachment_path);
-      }
-
-      const { error } = await supabase
-        .from("messages")
-        .delete()
-        .eq("id", messageId)
-        .eq("sender_id", senderId);
-      if (error) throw error;
-
-      updateMessages((prev) => prev.filter((msg) => msg.id !== messageId));
-    } catch (error) {
-      console.error("Gagal menghapus pesan chat:", error);
-      alert(error instanceof Error ? error.message : "Gagal menghapus pesan.");
-    }
-  };
-
   const handleRemoveAttachment = async (message: Message): Promise<boolean> => {
     if (!message.attachment_path) return false;
     if (!confirm("Hapus pesan ini beserta file atau gambarnya?")) return false;
@@ -881,8 +939,60 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
     }
 
     updateMessages((prev) => prev.filter((item) => item.id !== message.id));
-    setMenuMessage(null);
+    setSelectedMessageIds((prev) => prev.filter((id) => id !== message.id));
     return true;
+  };
+
+  const toggleSelectedMessage = useCallback((messageId: string, selectOnly = false) => {
+    setSelectedMessageIds((current) => {
+      if (selectOnly) {
+        return current.includes(messageId) ? current : [...current, messageId];
+      }
+      return current.includes(messageId)
+        ? current.filter((id) => id !== messageId)
+        : [...current, messageId];
+    });
+  }, []);
+
+  const deleteSelectedMessages = async () => {
+    const targets = messages.filter(
+      (message) => selectedMessageIds.includes(message.id) && message.is_admin
+    );
+    if (targets.length === 0) return;
+    if (!confirm(`Hapus ${targets.length} pesan admin yang dipilih?`)) return;
+
+    try {
+      await removeChatAttachments(
+        targets
+          .map((message) => message.attachment_path)
+          .filter((path): path is string => typeof path === "string")
+      );
+      const ids = targets.map((message) => message.id);
+      const { data, error } = await supabase
+        .from("messages")
+        .delete()
+        .in("id", ids)
+        .eq("sender_id", senderId)
+        .select("id");
+      if (error) throw error;
+      const deletedIds = new Set((data ?? []).map((row) => row.id));
+      if (deletedIds.size !== ids.length) {
+        throw new Error("Sebagian pesan tidak dapat dihapus oleh policy database.");
+      }
+
+      updateMessages((prev) => prev.filter((message) => !deletedIds.has(message.id)));
+      setSelectedMessageIds((prev) => prev.filter((id) => !deletedIds.has(id)));
+    } catch (error) {
+      console.error("Gagal menghapus pesan yang dipilih:", error);
+      alert(error instanceof Error ? error.message : "Gagal menghapus pesan.");
+    }
+  };
+
+  const editSelectedMessage = () => {
+    const message = messages.find((item) => item.id === selectedMessageIds[0]);
+    if (!message || !message.is_admin || !message.text) return;
+    setEditingId(message.id);
+    setSelectedMessageIds([]);
   };
 
   const handleClearAllMessages = async () => {
@@ -913,6 +1023,7 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
       if (error) throw error;
 
       updateMessages(() => []);
+      setSelectedMessageIds([]);
       alert("Semua riwayat pesan berhasil dibersihkan.");
     } catch (error) {
       console.error("Gagal membersihkan pesan:", error);
@@ -929,6 +1040,7 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
       } else {
         updateMessages((prev) => prev.map((msg) => (msg.id === messageId ? { ...msg, text: newText } : msg)));
         setEditingId(null);
+        setSelectedMessageIds([]);
       }
     },
     [updateMessages]
@@ -1025,10 +1137,18 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
     [replyingTo, senderId, stopTyping, updateMessages, enforceMessageLimit]
   );
 
-  // Handler stabil untuk item memo
-  const openMenu = useCallback((msg: Message) => setMenuMessage(msg), []);
-  const cancelEdit = useCallback(() => setEditingId(null), []);
+  const cancelEdit = useCallback(() => {
+    setEditingId(null);
+    setSelectedMessageIds([]);
+  }, []);
   const cancelReply = useCallback(() => setReplyingTo(null), []);
+  const selectedMessages = messages.filter((message) =>
+    selectedMessageIds.includes(message.id)
+  );
+  const selectedMessage = selectedMessages[0];
+  const canEditSelected =
+    selectedMessages.length === 1 && !!selectedMessage?.text && selectedMessage.is_admin;
+  const canDeleteSelected = selectedMessages.some((message) => message.is_admin);
 
   return (
     <div className="flex h-full flex-col overflow-hidden text-blue-100 antialiased">
@@ -1128,7 +1248,9 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
                 }
                 profileName={profileName}
                 isEditing={editingId === msg.id}
-                onOpenMenu={openMenu}
+                selectionMode={selectedMessages.length > 0}
+                selected={selectedMessageIds.includes(msg.id)}
+                onSelectMessage={toggleSelectedMessage}
                 onSaveEdit={handleEditMessage}
                 onCancelEdit={cancelEdit}
                 onDeleteAttachment={handleRemoveAttachment}
@@ -1138,6 +1260,56 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
         )}
       </div>
 
+      {selectedMessages.length > 0 && (
+        <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-t border-cyan-300/20 bg-blue-950/95 px-2 py-2 sm:gap-2 sm:px-4">
+          <span className="mr-auto shrink-0 px-2 text-xs font-semibold text-cyan-100">
+            {selectedMessages.length} dipilih
+          </span>
+          <button
+            type="button"
+            onClick={() => setSelectedMessageIds([])}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-2 text-xs text-blue-100 hover:bg-blue-500/20"
+            aria-label="Batal memilih pesan"
+          >
+            <Icon d={ICONS.close} className="h-4 w-4" />
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={() => void deleteSelectedMessages()}
+            disabled={!canDeleteSelected}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-2 text-xs text-red-300 hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Icon d={ICONS.trash} className="h-4 w-4" />
+            Hapus
+          </button>
+          <button
+            type="button"
+            onClick={editSelectedMessage}
+            disabled={!canEditSelected}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-2 text-xs text-blue-100 hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Icon d={ICONS.edit} className="h-4 w-4" />
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (selectedMessages.length !== 1) return;
+              setReplyingTo(selectedMessages[0]);
+              setSelectedMessageIds([]);
+            }}
+            disabled={selectedMessages.length !== 1}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-2 text-xs text-blue-100 hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Icon d={ICONS.reply} className="h-4 w-4" />
+            Balas
+          </button>
+        </div>
+      )}
+
+      <TombolNotifikasi teks="Aktifkan notifikasi agar tahu saat ada pesan baru" />
+
       {/* FORM INPUT */}
       <MessageInput
         replyingTo={replyingTo}
@@ -1146,67 +1318,6 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
         onTyping={handleTyping}
         onCancelReply={cancelReply}
       />
-
-      {/* MODAL PILIHAN PESAN (tanpa blur: overlay solid supaya ringan) */}
-      {menuMessage && (
-        <div
-          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 p-3 md:items-center"
-          onClick={() => setMenuMessage(null)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Pilihan pesan"
-            className="w-full max-w-xs rounded-3xl border border-blue-400/30 bg-linear-to-br from-blue-950 to-zinc-950 p-2"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p className="truncate px-3 pb-2 pt-2 text-[11px] text-blue-300/70">{menuMessage.text}</p>
-
-            {menuMessage.attachment_path && (
-              <ModalOption
-                icon={ICONS.trash}
-                label="Hapus pesan"
-                danger
-                onClick={() => void handleRemoveAttachment(menuMessage)}
-              />
-            )}
-
-            <ModalOption
-              icon={ICONS.reply}
-              label="Balas"
-              onClick={() => {
-                setReplyingTo(menuMessage);
-                setMenuMessage(null);
-              }}
-            />
-
-            {menuMessage.is_admin && (
-              <>
-                <ModalOption
-                  icon={ICONS.edit}
-                  label="Edit"
-                  onClick={() => {
-                    setEditingId(menuMessage.id);
-                    setMenuMessage(null);
-                  }}
-                />
-                <ModalOption
-                  icon={ICONS.trash}
-                  label="Hapus"
-                  danger
-                  onClick={() => {
-                    const id = menuMessage.id;
-                    setMenuMessage(null);
-                    handleDeleteMessage(id);
-                  }}
-                />
-              </>
-            )}
-
-            <ModalOption icon={ICONS.close} label="Batal" onClick={() => setMenuMessage(null)} />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

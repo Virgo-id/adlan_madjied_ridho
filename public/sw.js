@@ -1,4 +1,4 @@
-const VERSION = "v1";
+const VERSION = "v2";
 const STATIC_CACHE = `static-${VERSION}`;
 const OFFLINE_URL = "/offline";
 
@@ -44,11 +44,8 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Aset statis (hash di nama file, aman di-cache lama)
-  if (
-    url.pathname.startsWith("/_next/static/") ||
-    url.pathname.startsWith("/icon/")
-  ) {
+  // Jangan cache chunk Next agar kode yang diperbarui tidak tertahan oleh service worker.
+  if (url.pathname.startsWith("/icon/")) {
     event.respondWith(
       caches.match(request).then(
         (cached) =>
@@ -61,4 +58,65 @@ self.addEventListener("fetch", (event) => {
       )
     );
   }
+});
+
+// ===== Notifikasi push chat =====
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {}
+  if (data.type !== "chat") return;
+
+  event.waitUntil(
+    (async () => {
+      const list = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      const sedangDilihat = list.some(
+        (c) => c.visibilityState === "visible" && c.focused
+      );
+      if (sedangDilihat) return; // chat sedang dilihat, tidak perlu notifikasi
+
+      await self.registration.showNotification(data.title || "Pesan baru", {
+        body: data.body || "",
+        icon: "/icon/icon-192x192.png",
+        badge: "/icon/icon-192x192.png",
+        tag: data.tag,
+        renotify: true,
+        data: { url: data.url || "/" },
+      });
+
+      if (data.badge != null && "setAppBadge" in self.navigator) {
+        await self.navigator.setAppBadge(data.badge);
+      }
+    })()
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || "/";
+
+  event.waitUntil(
+    (async () => {
+      const list = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      for (const c of list) {
+        if ("focus" in c) {
+          await c.focus();
+          if ("navigate" in c) {
+            try {
+              await c.navigate(url);
+            } catch {}
+          }
+          return;
+        }
+      }
+      await self.clients.openWindow(url);
+    })()
+  );
 });

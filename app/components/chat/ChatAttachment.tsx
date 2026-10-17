@@ -32,11 +32,15 @@ export default function ChatAttachment({
   name,
   type,
   onDelete,
+  selectionMode = false,
+  withText = false,
 }: {
   path: string;
   name: string;
   type: string | null;
   onDelete?: () => Promise<boolean>;
+  selectionMode?: boolean;
+  withText?: boolean;
 }) {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -134,23 +138,42 @@ export default function ChatAttachment({
     if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null;
   };
 
-  if (failed) {
-    return <p className="mt-2 text-xs text-red-300">Lampiran tidak dapat dibuka.</p>;
-  }
-
-  if (!url) {
-    return <p className="mt-2 text-xs text-blue-200/60">Memuat lampiran...</p>;
-  }
-
   const isImage = type?.startsWith("image/") ?? false;
   const isVideo = type?.startsWith("video/") ?? false;
   const isAudio = type?.startsWith("audio/") ?? false;
+  if (failed) {
+    return <p className="max-w-56 text-xs text-red-300">Lampiran tidak dapat dibuka.</p>;
+  }
+
+  if (!url) {
+    return (
+      <div
+        aria-label={`Memuat ${name}`}
+        className={`animate-pulse rounded-md border border-blue-300/20 bg-blue-400/10 ${
+          isImage ? "h-32 w-48 max-w-full" : "h-12 w-56 max-w-full"
+        } ${
+          withText ? "rounded-b-none border-b-0" : ""
+        }`}
+      >
+        <span className="sr-only">Memuat lampiran...</span>
+      </div>
+    );
+  }
+
   return (
     <>
       <button
         type="button"
-        onClick={openPreview}
-        className="mt-2 block max-w-full cursor-zoom-in text-left"
+        onClick={(event) => {
+          if (selectionMode) {
+            event.preventDefault();
+            return;
+          }
+          openPreview();
+        }}
+        className={`block max-w-56 text-left ${
+          selectionMode ? "cursor-pointer" : "cursor-zoom-in"
+        }`}
         aria-label={`Buka pratinjau ${name}`}
       >
         {isImage ? (
@@ -159,13 +182,21 @@ export default function ChatAttachment({
             src={url}
             alt={name}
             loading="lazy"
-            className="max-h-72 max-w-full rounded-xl object-contain"
+            className={`h-32 max-h-48 max-w-full border border-blue-300/20 object-cover ${
+              withText ? "rounded-t-md rounded-b-none border-b-0" : "rounded-md"
+            }`}
           />
         ) : (
-          <span className="inline-flex max-w-full items-center gap-2 rounded-xl border border-blue-300/20 bg-black/10 px-3 py-2 text-xs text-cyan-100 transition hover:bg-blue-500/20">
+          <span
+            className={`inline-flex h-12 max-w-56 items-center gap-2 overflow-hidden border border-blue-300/20 bg-black/10 px-2.5 text-xs text-cyan-100 transition hover:bg-blue-500/20 ${
+              withText ? "rounded-t-md rounded-b-none border-b-0" : "rounded-md"
+            }`}
+          >
             <Icon path="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.82-2.83l8.48-8.48" className="h-4 w-4 shrink-0" />
             <span className="truncate">{name}</span>
-            <span className="shrink-0 text-blue-200/60">Pratinjau</span>
+            <span className="shrink-0 text-blue-200/60">
+              {isVideo ? "Video" : isAudio ? "Audio" : "Pratinjau"}
+            </span>
           </span>
         )}
       </button>

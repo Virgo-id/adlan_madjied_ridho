@@ -1371,7 +1371,28 @@ export default function Home() {
       sessionStorage.removeItem(CHAT_REOPEN_KEY);
       setChatOpen(true);
     }
+
+    // Dibuka dari notifikasi push: /?chat=open
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("chat") === "open") {
+      setChatOpen(true);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
   }, []);
+
+  // Badge ikon aplikasi mengikuti jumlah balasan admin yang belum dibaca
+  const badgeSebelumnya = useRef(0);
+  useEffect(() => {
+    const nav = navigator as any;
+    let hasil: any;
+    if (jumlahPesanBaru > 0) {
+      hasil = nav.setAppBadge?.(jumlahPesanBaru);
+    } else if (badgeSebelumnya.current > 0) {
+      hasil = nav.clearAppBadge?.(); // hanya menghapus jika tadinya ada angka
+    }
+    badgeSebelumnya.current = jumlahPesanBaru;
+    hasil?.catch?.(() => {});
+  }, [jumlahPesanBaru]);
 
   useEffect(() => {
     // Tutup modal login otomatis setelah berhasil masuk
