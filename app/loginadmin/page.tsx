@@ -1,14 +1,188 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
+
+/* ---------- Ikon SVG (gaya sama dengan halaman utama) ---------- */
+
+type IkonProps = { className?: string };
+
+function Ikon({
+  className = "h-4 w-4",
+  children,
+}: {
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
+}
+
+function IconPanah({ className }: IkonProps) {
+  return (
+    <Ikon className={className}>
+      <path d="M5 12h14" />
+      <path d="m13 6 6 6-6 6" />
+    </Ikon>
+  );
+}
+
+function IconKembali({ className }: IkonProps) {
+  return (
+    <Ikon className={className}>
+      <path d="M19 12H5" />
+      <path d="m11 6-6 6 6 6" />
+    </Ikon>
+  );
+}
+
+function IconUser({ className }: IkonProps) {
+  return (
+    <Ikon className={className}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21a8 8 0 0 1 16 0" />
+    </Ikon>
+  );
+}
+
+function IconKunci({ className }: IkonProps) {
+  return (
+    <Ikon className={className}>
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </Ikon>
+  );
+}
+
+function IconMata({ className }: IkonProps) {
+  return (
+    <Ikon className={className}>
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </Ikon>
+  );
+}
+
+function IconMataTutup({ className }: IkonProps) {
+  return (
+    <Ikon className={className}>
+      <path d="M3 3l18 18" />
+      <path d="M10.6 5.1A10.5 10.5 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4" />
+      <path d="M6.6 6.6A17 17 0 0 0 2 12s3.6 7 10 7a10 10 0 0 0 4.4-1" />
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+    </Ikon>
+  );
+}
+
+function IconPeringatan({ className }: IkonProps) {
+  return (
+    <Ikon className={className}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v6" />
+      <path d="M12 16.5h.01" />
+    </Ikon>
+  );
+}
+
+/* ---------- SVG dekoratif ---------- */
+
+type JenisDekor = "cincin" | "titik" | "heksagon" | "garis";
+
+function Dekor({
+  jenis,
+  className = "",
+}: {
+  jenis: JenisDekor;
+  className?: string;
+}) {
+  const umum = {
+    viewBox: "0 0 200 200",
+    className: `pointer-events-none ${className}`,
+    "aria-hidden": true,
+  } as const;
+
+  switch (jenis) {
+    case "cincin":
+      return (
+        <svg {...umum} fill="none" stroke="currentColor" strokeWidth="1.5">
+          <circle cx="100" cy="100" r="30" />
+          <circle cx="100" cy="100" r="60" />
+          <circle cx="100" cy="100" r="90" />
+        </svg>
+      );
+
+    case "titik":
+      return (
+        <svg {...umum} fill="currentColor">
+          {[20, 60, 100, 140, 180].flatMap((x) =>
+            [20, 60, 100, 140, 180].map((y) => (
+              <circle key={`${x}-${y}`} cx={x} cy={y} r="3.5" />
+            ))
+          )}
+        </svg>
+      );
+
+    case "heksagon":
+      return (
+        <svg
+          {...umum}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        >
+          <polygon points="100,10 178,55 178,145 100,190 22,145 22,55" />
+          <polygon points="100,45 148,72 148,128 100,155 52,128 52,72" />
+          <polygon points="100,80 118,90 118,110 100,120 82,110 82,90" fill="currentColor" />
+        </svg>
+      );
+
+    case "garis":
+      return (
+        <svg
+          {...umum}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        >
+          {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+            <path key={i} d={`M${i * 30 - 20} 220 L${i * 30 + 120} 80`} />
+          ))}
+        </svg>
+      );
+  }
+}
+
+const KELAS_INPUT =
+  "w-full rounded-2xl border border-blue-400/20 bg-blue-950/60 py-3 pl-11 pr-4 text-sm text-white outline-none transition placeholder:text-blue-300/40 focus:border-cyan-300/70 disabled:opacity-60";
 
 export default function AdminLogin() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [lihat, setLihat] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Scrollbar biru gradasi, sama seperti halaman utama
+  useEffect(() => {
+    const html = document.documentElement;
+    html.classList.add("scrollbar-biru");
+    return () => html.classList.remove("scrollbar-biru");
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,7 +200,7 @@ export default function AdminLogin() {
       if (error) {
         setErrorMessage("Kredensial salah. Silakan coba lagi.");
       } else {
-        window.location.href = "/admin"; 
+        window.location.href = "/admin";
       }
     } catch (err) {
       setErrorMessage("Terjadi kesalahan jaringan.");
@@ -36,108 +210,116 @@ export default function AdminLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-zinc-300 flex items-center justify-center p-4 relative overflow-hidden">
-      
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#040a16] p-4 font-sans text-zinc-50 antialiased [background-image:radial-gradient(rgba(96,165,250,0.12)_1px,transparent_1px)] [background-size:24px_24px]">
       {/* Tombol Kembali ke Beranda */}
-      <div className="absolute top-6 left-6 z-10">
-        <Link 
-          href="/" 
-          className="flex items-center gap-2 text-zinc-500 hover:text-zinc-200 text-xs font-medium transition-colors group bg-zinc-950/40 backdrop-blur-md border border-zinc-900/80 px-3 py-2 rounded-xl"
+      <div className="absolute left-5 top-5 z-10 sm:left-8 sm:top-8">
+        <Link
+          href="/"
+          className="group flex items-center gap-2 rounded-full border border-blue-400/30 bg-blue-950/60 px-4 py-2 text-xs font-semibold text-blue-200 transition duration-200 hover:border-cyan-300/60 hover:text-cyan-200 active:scale-95"
         >
-          <svg 
-            xmlns="http://www.w3.org/2000/svg" 
-            viewBox="0 0 20 20" 
-            fill="currentColor" 
-            className="w-4 h-4 transform group-hover:-translate-x-0.5 transition-transform"
-          >
-            <path fillRule="evenodd" d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z" clipRule="evenodd" />
-          </svg>
+          <IconKembali className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-0.5" />
           Kembali ke Beranda
         </Link>
       </div>
 
-      {/* Efek Ambient Glow Latar Belakang - UBAH KE BIRU */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-blue-500/10 rounded-full blur-[120px] pointer-events-none select-none" />
+      {/* Glow latar belakang */}
+      <div className="pointer-events-none absolute left-1/2 top-1/2 h-[420px] w-[420px] -translate-x-1/2 -translate-y-1/2 select-none rounded-full bg-blue-500/15 blur-[120px]" />
 
-      {/* FORM CARD */}
-      <div className="w-full max-w-sm bg-zinc-950/60 backdrop-blur-xl p-8 rounded-2xl border border-zinc-900/80 shadow-2xl relative z-10 text-center animate-in fade-in zoom-in-95 duration-200">
-        
-        {/* Header Form - UBAH KE BIRU */}
-        <div className="mb-8 flex flex-col items-center">
-          <div className="w-8 h-8 rounded-lg bg-blue-600/10 border border-blue-500/20 flex items-center justify-center mb-4">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-blue-400">
-              <path fillRule="evenodd" d="M10 1a4.5 4.5 0 0 0-4.5 4.5V9H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-.5V5.5A4.5 4.5 0 0 0 10 1Zm3 8V5.5a3 3 0 1 0-6 0V9h6Z" clipRule="evenodd" />
-            </svg>
+      {/* Kartu form */}
+      <div className="relative z-10 w-full max-w-md overflow-hidden rounded-[2rem] border border-blue-400/30 bg-linear-to-br from-blue-950 to-zinc-950 animate-in fade-in zoom-in-95 duration-200">
+        {/* Kepala */}
+        <div className="relative overflow-hidden bg-linear-to-br from-blue-700 via-blue-600 to-cyan-400 px-6 pb-7 pt-6">
+          <Dekor
+            jenis="cincin"
+            className="absolute -right-14 -top-14 h-52 w-52 text-white/20"
+          />
+          <Dekor
+            jenis="titik"
+            className="absolute -bottom-8 left-4 h-24 w-24 text-white/15"
+          />
+          <div className="relative">
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/20 text-white">
+              <IconKunci className="h-5 w-5" />
+            </span>
+            <h1 className="mt-4 text-2xl font-black text-white">Admin Area</h1>
+            <p className="mt-1 text-sm text-blue-50/90">
+              Silakan masuk untuk mengelola dashboard chat.
+            </p>
           </div>
-          <h1 className="text-white font-bold text-xl tracking-tight">Admin Area</h1>
-          <p className="text-zinc-500 text-xs mt-1">Silakan masuk untuk mengelola dashboard chat.</p>
         </div>
 
-        {/* Error Notification Alert */}
-        {errorMessage && (
-          <div className="mb-5 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center justify-center gap-2 animate-in fade-in slide-in-from-top-1 duration-150">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 flex-shrink-0">
-              <path fillRule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-8-5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 10 5Zm0 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
-            </svg>
-            <span>{errorMessage}</span>
-          </div>
-        )}
-        
-        <form onSubmit={handleLogin} className="space-y-5 text-left">
-          {/* Input Username - UBAH KE BIRU */}
-          <div className="space-y-1.5">
-            <label className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest block pl-1">Username</label>
+        {/* Isi */}
+        <div className="relative p-6">
+          <Dekor
+            jenis="garis"
+            className="absolute -bottom-10 -right-10 h-44 w-44 text-blue-400/10"
+          />
+
+          <form onSubmit={handleLogin} className="relative space-y-3">
+            {/* Username */}
             <div className="relative">
-              <input 
+              <IconUser className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-blue-300/70" />
+              <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full bg-black/60 border border-zinc-800/80 rounded-xl py-3 px-4 text-white text-xs outline-none focus:border-blue-600/80 focus:bg-black transition-all placeholder-zinc-700"
-                placeholder="Masukkan username"
+                className={KELAS_INPUT}
+                placeholder="Username"
+                autoComplete="username"
                 required
                 disabled={loading}
                 autoFocus
-                suppressHydrationWarning // JALUR PINTAS INPUT 1
+                suppressHydrationWarning
               />
             </div>
-          </div>
 
-          {/* Input Password - UBAH KE BIRU */}
-          <div className="space-y-1.5">
-            <label className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest block pl-1">Password</label>
+            {/* Password */}
             <div className="relative">
-              <input 
-                type="password"
+              <IconKunci className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-blue-300/70" />
+              <input
+                type={lihat ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-black/60 border border-zinc-800/80 rounded-xl py-3 px-4 text-white text-xs outline-none focus:border-blue-600/80 focus:bg-black transition-all placeholder-zinc-700"
-                placeholder="••••••••"
+                className={`${KELAS_INPUT} pr-12`}
+                placeholder="Password"
+                autoComplete="current-password"
                 required
                 disabled={loading}
-                suppressHydrationWarning // JALUR PINTAS INPUT 2
+                suppressHydrationWarning
               />
+              <button
+                type="button"
+                onClick={() => setLihat((v) => !v)}
+                aria-label={lihat ? "Sembunyikan password" : "Tampilkan password"}
+                className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full text-blue-300/70 transition hover:text-cyan-300 active:scale-90"
+              >
+                {lihat ? <IconMataTutup /> : <IconMata />}
+              </button>
             </div>
-          </div>
 
-          {/* Submit Button - UBAH KE BIRU */}
-          <button 
-            disabled={loading}
-            suppressHydrationWarning // JALUR PINTAS BUTTON
-            className="w-full bg-blue-600 text-white py-3 rounded-xl text-xs font-bold hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 transition-all flex items-center justify-center gap-2 mt-2 shadow-lg shadow-blue-950/40"
-          >
-            {loading ? (
-              <>
-                <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span>Memverifikasi...</span>
-              </>
-            ) : (
-              "Masuk ke Dashboard"
+            {/* Pesan error */}
+            {errorMessage && (
+              <p
+                role="alert"
+                className="flex items-center gap-2 rounded-2xl bg-blue-500/10 px-4 py-3 text-xs font-semibold text-sky-200 animate-in fade-in slide-in-from-top-1 duration-150"
+              >
+                <IconPeringatan className="h-4 w-4 shrink-0" />
+                <span>{errorMessage}</span>
+              </p>
             )}
-          </button>
-        </form>
+
+            {/* Tombol submit */}
+            <button
+              type="submit"
+              disabled={loading}
+              suppressHydrationWarning
+              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-linear-to-r from-blue-600 to-cyan-500 px-4 py-3 text-sm font-bold text-white transition duration-200 ease-out hover:scale-[1.02] hover:from-blue-500 hover:to-cyan-400 active:scale-95 active:from-blue-700 active:to-cyan-600 disabled:cursor-wait disabled:opacity-60 disabled:hover:scale-100"
+            >
+              {loading ? "Memverifikasi..." : "Masuk ke Dashboard"}
+              {!loading && <IconPanah />}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );

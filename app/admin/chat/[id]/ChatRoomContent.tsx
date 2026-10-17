@@ -68,10 +68,10 @@ function ModalOption({
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-xs font-semibold transition-colors ${
+      className={`flex w-full cursor-pointer items-center gap-3 rounded-2xl px-3 py-3 text-left text-xs font-semibold transition-colors ${
         danger
           ? "text-red-400 hover:bg-red-950/40"
-          : "text-zinc-200 hover:bg-zinc-800"
+          : "text-blue-100 hover:bg-blue-500/15"
       }`}
     >
       <Icon d={icon} className="h-4 w-4 flex-shrink-0" />
@@ -475,15 +475,15 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
   };
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-zinc-950 text-zinc-300 antialiased">
+    <div className="flex h-full flex-col overflow-hidden text-blue-100 antialiased">
       {/* HEADER */}
-      <header className="flex flex-shrink-0 items-center justify-between bg-zinc-950 p-4">
+      <header className="flex flex-shrink-0 items-center justify-between border-b border-blue-400/15 bg-linear-to-r from-blue-700/30 to-cyan-500/10 p-4">
         <div className="flex min-w-0 items-center gap-3">
           {/* Tombol kembali: panah < saja (hanya di HP) */}
           <Link
             href="/admin/chat"
             aria-label="Kembali"
-            className="-ml-1 rounded-xl p-2 text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-white md:hidden"
+            className="-ml-1 rounded-full p-2 text-blue-200 transition duration-200 hover:bg-blue-500/15 hover:text-white active:scale-90 md:hidden"
           >
             <Icon d={ICONS.back} className="h-5 w-5" strokeWidth={2.2} />
           </Link>
@@ -499,28 +499,28 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-800 text-xs font-bold uppercase text-zinc-200">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-linear-to-br from-blue-500 to-cyan-400 text-xs font-bold uppercase text-white">
                 {profileName.charAt(0)}
               </div>
             )}
 
             {/* Indikator online/offline */}
             <span
-              className={`absolute bottom-0 right-0 inline-block h-2.5 w-2.5 rounded-full border-2 border-zinc-950 transition-colors duration-300 ${
-                isUserOnline ? "bg-emerald-500" : "bg-zinc-600"
+              className={`absolute bottom-0 right-0 inline-block h-2.5 w-2.5 rounded-full border-2 border-[#040a16] transition-colors duration-300 ${
+                isUserOnline ? "bg-emerald-500" : "bg-blue-900"
               }`}
             ></span>
           </div>
 
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-bold tracking-wide text-zinc-100">{profileName}</h2>
+            <h2 className="truncate text-sm font-bold tracking-wide text-white">{profileName}</h2>
             <p className="mt-0.5 min-h-[12px] text-[10px] font-medium tracking-wide">
               {isUserTyping ? (
-                <span className="animate-pulse text-sky-400">sedang mengetik...</span>
+                <span className="animate-pulse text-cyan-300">sedang mengetik...</span>
               ) : isUserOnline ? (
                 <span className="text-emerald-500">online</span>
               ) : (
-                <span className="text-zinc-500">offline</span>
+                <span className="text-blue-300/70">offline</span>
               )}
             </p>
           </div>
@@ -529,7 +529,7 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
         <button
           onClick={handleClearAllMessages}
           title="Hapus semua pesan"
-          className="rounded-xl p-2 text-zinc-400 transition-colors hover:bg-red-950/40 hover:text-red-400"
+          className="cursor-pointer rounded-full p-2 text-blue-300/80 transition duration-200 hover:bg-red-950/40 hover:text-red-300 active:scale-90"
         >
           <Icon d={ICONS.trash} className="h-4 w-4" />
           <span className="sr-only">Hapus Semua Pesan</span>
@@ -540,14 +540,14 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="custom-scrollbar flex-1 space-y-4 overflow-y-auto bg-zinc-950 p-4 md:p-6"
+        className="scrollbar-biru flex-1 space-y-4 overflow-y-auto p-4 md:p-6"
       >
         {isLoading ? (
-          <div className="flex h-full items-center justify-center text-xs font-medium uppercase tracking-widest text-zinc-600">
+          <div className="flex h-full items-center justify-center text-xs font-medium uppercase tracking-widest text-blue-300/60">
             Sinkronisasi...
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-xs font-medium italic text-zinc-600">
+          <div className="flex h-full items-center justify-center text-xs font-medium italic text-blue-300/60">
             Tidak ada pesan di obrolan ini.
           </div>
         ) : (
@@ -565,17 +565,17 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
                   }`}
                 >
                   {editingId === msg.id ? (
-                    <div className="flex w-full gap-2 rounded-xl bg-zinc-900 p-2">
+                    <div className="flex w-full gap-2 rounded-2xl border border-blue-400/30 bg-blue-950/80 p-2">
                       <input
                         type="text"
                         value={editText}
                         onChange={(e) => setEditText(e.target.value)}
-                        className="flex-1 rounded-lg bg-zinc-950 px-3 py-1.5 text-xs text-zinc-200 outline-none focus:ring-1 focus:ring-blue-500"
+                        className="flex-1 rounded-xl border border-blue-400/20 bg-blue-950/60 px-3 py-1.5 text-xs text-white outline-none transition focus:border-cyan-300/70"
                         autoFocus
                       />
                       <button
                         onClick={() => handleEditMessage(msg.id)}
-                        className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-blue-500"
+                        className="cursor-pointer rounded-xl bg-linear-to-r from-blue-600 to-cyan-500 px-3 py-1.5 text-xs font-bold text-white transition duration-200 hover:from-blue-500 hover:to-cyan-400 active:scale-95"
                       >
                         OK
                       </button>
@@ -584,7 +584,7 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
                           setEditingId(null);
                           setEditText("");
                         }}
-                        className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:bg-zinc-700"
+                        className="cursor-pointer rounded-xl bg-blue-500/10 px-3 py-1.5 text-xs font-semibold text-blue-200 transition duration-200 hover:bg-blue-500/20 active:scale-95"
                       >
                         Batal
                       </button>
@@ -592,11 +592,11 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
                   ) : (
                     <div className="relative flex max-w-full flex-col">
                       {repliedMsg && (
-                        <div className="mb-[-4px] max-w-full select-none rounded-t-lg border-l-2 border-zinc-700 bg-zinc-900 px-3 py-1 text-[11px] text-zinc-400">
-                          <span className="block truncate text-[9px] font-bold text-zinc-500">
+                        <div className="mb-[-4px] max-w-full select-none rounded-t-xl border-l-2 border-cyan-300/60 bg-blue-950/80 px-3 py-1 text-[11px] text-blue-200/80">
+                          <span className="block truncate text-[9px] font-bold text-cyan-300/80">
                             @{repliedMsg.is_admin ? "Anda" : profileName}
                           </span>
-                          <p className="mt-0.5 truncate text-[10px] text-zinc-400">{repliedMsg.text}</p>
+                          <p className="mt-0.5 truncate text-[10px] text-blue-200/80">{repliedMsg.text}</p>
                         </div>
                       )}
 
@@ -608,10 +608,10 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
                         }}
                         className={`cursor-pointer select-text break-words p-3 px-4 text-xs leading-relaxed transition-colors ${
                           msg.is_admin
-                            ? `bg-blue-700 text-white hover:bg-blue-600 ${
+                            ? `bg-linear-to-br from-blue-600 to-cyan-500 text-white hover:from-blue-500 hover:to-cyan-400 ${
                                 repliedMsg ? "rounded-b-xl rounded-tl-xl" : "rounded-2xl rounded-tr-none"
                               }`
-                            : `bg-zinc-900 text-zinc-200 hover:bg-zinc-800 ${
+                            : `border border-blue-400/20 bg-blue-950/80 text-blue-50 hover:bg-blue-900/80 ${
                                 repliedMsg ? "rounded-b-xl rounded-tr-xl" : "rounded-2xl rounded-tl-none"
                               }`
                         }`}
@@ -620,7 +620,7 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
                       </div>
 
                       <div
-                        className={`pointer-events-none mt-1 flex select-none items-center gap-1 px-1 font-mono text-[10px] text-zinc-500 ${
+                        className={`pointer-events-none mt-1 flex select-none items-center gap-1 px-1 font-mono text-[10px] text-blue-300/70 ${
                           msg.is_admin ? "justify-end" : "justify-start"
                         }`}
                       >
@@ -632,7 +632,7 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
                                 xmlns="http://www.w3.org/2000/svg"
                                 viewBox="0 0 20 20"
                                 fill="currentColor"
-                                className="h-3 w-3 text-zinc-600"
+                                className="h-3 w-3 text-blue-300/60"
                               >
                                 <path
                                   fillRule="evenodd"
@@ -645,7 +645,7 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
                                 xmlns="http://www.w3.org/2000/svg"
                                 viewBox="0 0 20 20"
                                 fill="currentColor"
-                                className={`h-3.5 w-3.5 ${msg.is_read ? "text-sky-400" : "text-zinc-500"}`}
+                                className={`h-3.5 w-3.5 ${msg.is_read ? "text-cyan-200" : "text-blue-200/60"}`}
                               >
                                 <path
                                   fillRule="evenodd"
@@ -674,16 +674,16 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
       {/* FORM INPUT */}
       <form
         onSubmit={handleSendMessage}
-        className="flex-shrink-0 bg-zinc-950 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+        className="flex-shrink-0 border-t border-blue-400/15 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       >
-        <div className="mx-auto flex max-w-4xl flex-col overflow-hidden rounded-xl bg-zinc-900">
+        <div className="mx-auto flex max-w-4xl flex-col overflow-hidden rounded-2xl border border-blue-400/20 bg-blue-950/60 transition focus-within:border-cyan-300/60">
           {replyingTo && (
-            <div className="flex items-center justify-between bg-zinc-800/50 px-4 py-1.5">
-              <div className="truncate border-l-2 border-blue-500 pl-2 pr-4 text-left">
-                <span className="block text-[9px] font-bold uppercase tracking-wider text-zinc-400">
+            <div className="flex items-center justify-between bg-blue-500/10 px-4 py-1.5">
+              <div className="truncate border-l-2 border-cyan-300 pl-2 pr-4 text-left">
+                <span className="block text-[9px] font-bold uppercase tracking-wider text-blue-200/80">
                   Membalas {replyingTo.is_admin ? "Anda" : profileName}
                 </span>
-                <span className="mt-0.5 block truncate text-[11px] italic text-zinc-400">
+                <span className="mt-0.5 block truncate text-[11px] italic text-blue-200/80">
                   {replyingTo.text}
                 </span>
               </div>
@@ -691,7 +691,7 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
                 type="button"
                 onClick={() => setReplyingTo(null)}
                 aria-label="Batalkan balasan"
-                className="p-1 text-zinc-500 hover:text-zinc-300"
+                className="p-1 text-blue-300/70 hover:text-blue-100"
               >
                 <Icon d={ICONS.close} className="h-3.5 w-3.5" strokeWidth={2} />
               </button>
@@ -702,14 +702,14 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
             <input
               value={inputMessage}
               onChange={handleInputChange}
-              className="flex-1 bg-transparent px-1 py-2 text-xs text-zinc-200 outline-none placeholder-zinc-600"
+              className="flex-1 bg-transparent px-1 py-2 text-xs text-white outline-none placeholder:text-blue-300/40"
               placeholder={replyingTo ? "Tulis balasan..." : "Ketik pesan..."}
             />
             <button
               type="submit"
               disabled={!inputMessage.trim()}
               aria-label="Kirim"
-              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-blue-600 p-2 text-white transition-colors hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600"
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center cursor-pointer rounded-xl bg-linear-to-r from-blue-600 to-cyan-500 p-2 text-white transition duration-200 hover:from-blue-500 hover:to-cyan-400 active:scale-90 disabled:cursor-not-allowed disabled:from-blue-900/60 disabled:to-blue-900/60 disabled:text-blue-300/40 disabled:active:scale-100"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5">
                 <path d="M3.478 2.404a.75.75 0 0 0-.926.941l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.404Z" />
@@ -729,10 +729,10 @@ export default function ChatRoomContent({ chatUserId }: { chatUserId: string }) 
             role="dialog"
             aria-modal="true"
             aria-label="Pilihan pesan"
-            className="w-full max-w-xs rounded-2xl bg-zinc-900 p-2"
+            className="w-full max-w-xs rounded-3xl border border-blue-400/30 bg-linear-to-br from-blue-950 to-zinc-950 p-2"
             onClick={(e) => e.stopPropagation()}
           >
-            <p className="truncate px-3 pb-2 pt-2 text-[11px] text-zinc-500">{menuMessage.text}</p>
+            <p className="truncate px-3 pb-2 pt-2 text-[11px] text-blue-300/70">{menuMessage.text}</p>
 
             <ModalOption
               icon={ICONS.reply}

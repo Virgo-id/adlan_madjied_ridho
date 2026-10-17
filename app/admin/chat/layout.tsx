@@ -4,6 +4,12 @@
 import { usePathname } from "next/navigation";
 import ChatListSidebar from "./ChatListSidebar";
 
+// Gaya panel: tembus pandang penuh (tanpa warna latar dan tanpa blur),
+// hanya berupa bingkai. Di desktop bersudut lengkung dengan border biru tipis.
+const PANEL =
+  "relative h-full w-full overflow-hidden " +
+  "md:rounded-2xl md:border md:border-blue-400/30";
+
 export default function AdminChatLayout({
   children,
 }: {
@@ -20,14 +26,16 @@ export default function AdminChatLayout({
   const isInsideRoom = !!activeId;
 
   return (
-    <div className="w-full h-screen grid grid-cols-1 md:grid-cols-[350px_1fr] md:pl-16 overflow-hidden bg-zinc-950">
-      {/* SISI KIRI: daftar obrolan (tetap terpasang, tidak re-render saat pindah chat) */}
-      <div className={`w-full h-full overflow-hidden ${isInsideRoom ? "hidden md:block" : "block"}`}>
+    // Offset sidebar (md:pl-[4.5rem]) sudah diberikan oleh layout admin,
+    // jadi di sini cukup padding tipis + jarak tipis antar panel (gap-2).
+    <div className="grid h-screen w-full grid-cols-1 overflow-hidden md:grid-cols-[350px_1fr] md:gap-2 md:p-2">
+      {/* PANEL KIRI: daftar obrolan (tetap terpasang, tidak re-render saat pindah chat) */}
+      <div className={`${PANEL} ${isInsideRoom ? "hidden md:block" : "block"}`}>
         <ChatListSidebar activeId={activeId} />
       </div>
 
-      {/* SISI KANAN: halaman kosong atau ChatRoomContent */}
-      <div className={`w-full h-full overflow-hidden ${!isInsideRoom ? "hidden md:block" : "block"}`}>
+      {/* PANEL KANAN: halaman kosong atau ChatRoomContent */}
+      <div className={`${PANEL} ${!isInsideRoom ? "hidden md:block" : "block"}`}>
         {children}
       </div>
     </div>

@@ -1,0 +1,37 @@
+{
+  "id": "/",
+  "name": "Adlan Madjied Ridho",
+  "short_name": "Adlan",
+  "lang": "id",
+  "scope": "/",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#0a6cf0",
+  "background_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/icon/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon/icon-maskable-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon/icon-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

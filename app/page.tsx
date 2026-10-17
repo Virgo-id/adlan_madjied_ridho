@@ -898,11 +898,17 @@ function Header({
     <header className="relative z-30 mx-auto flex h-20 w-full max-w-5xl items-center justify-between px-5">
       <Link
         href="/"
-        className="flex items-center gap-2 text-lg font-black tracking-widest text-white"
+        aria-label="AMR - Beranda"
+        className="flex items-center gap-2.5 text-lg font-black tracking-widest text-white transition duration-200 hover:opacity-90 active:scale-95"
       >
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-linear-to-br from-blue-600 to-cyan-400 text-xs">
-          A
-        </span>
+        <Image
+          src="/icon/icon-192x192.png"
+          alt=""
+          width={36}
+          height={36}
+          priority
+          className="h-9 w-9 shrink-0 object-contain"
+        />
         AMR
       </Link>
       <AkunMenu pengguna={pengguna} siap={siap} onMasuk={onMasuk} />

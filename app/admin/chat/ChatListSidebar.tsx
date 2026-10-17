@@ -26,6 +26,34 @@ type Modal =
   | { kind: "unlock"; folder: Folder }
   | { kind: "move"; user: ChatUser };
 
+type PesanRingkas = {
+  id: string;
+  sender_id: string | null;
+  text: string | null;
+  created_at: string;
+  is_admin: boolean | null;
+  is_read: boolean | null;
+};
+
+const UKURAN_HALAMAN = 1000;
+
+// Mengambil seluruh baris per halaman, supaya tidak terpotong batas 1000 baris
+async function ambilSemuaHalaman<T>(
+  buat: (
+    dari: number,
+    sampai: number
+  ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+): Promise<{ data: T[]; error: string | null }> {
+  const hasil: T[] = [];
+  for (let dari = 0; ; dari += UKURAN_HALAMAN) {
+    const { data, error } = await buat(dari, dari + UKURAN_HALAMAN - 1);
+    if (error) return { data: hasil, error: error.message };
+    hasil.push(...(data ?? []));
+    if (!data || data.length < UKURAN_HALAMAN) break;
+  }
+  return { data: hasil, error: null };
+}
+
 const ICONS = {
   chevronDown: "M19.5 8.25l-7.5 7.5-7.5-7.5",
   close: "M6 18L18 6M6 6l12 12",
@@ -90,10 +118,10 @@ function ModalShell({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="w-full max-w-xs rounded-2xl bg-zinc-900 p-4"
+        className="w-full max-w-xs rounded-3xl border border-blue-400/30 bg-linear-to-br from-blue-950 to-zinc-950 p-5"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-3 text-sm font-bold text-zinc-100">{title}</h2>
+        <h2 className="mb-4 text-sm font-bold text-white">{title}</h2>
         {children}
       </div>
     </div>
@@ -133,20 +161,20 @@ function UnlockModal({
           }}
           placeholder="Masukkan sandi"
           autoFocus
-          className="w-full rounded-lg bg-zinc-950 px-3 py-2 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:ring-1 focus:ring-blue-500"
+          className="w-full rounded-2xl border border-blue-400/20 bg-blue-950/60 px-4 py-2.5 text-xs text-white outline-none transition placeholder:text-blue-300/40 focus:border-cyan-300/70"
         />
-        {wrong && <p className="text-[11px] text-red-400">Sandi salah.</p>}
+        {wrong && <p className="text-[11px] font-semibold text-sky-200">Sandi salah.</p>}
         <div className="flex gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 rounded-lg bg-zinc-800 px-3 py-2 text-xs font-medium text-zinc-400 hover:bg-zinc-700"
+            className="flex-1 cursor-pointer rounded-2xl bg-blue-500/10 px-3 py-2.5 text-xs font-semibold text-blue-200 transition duration-200 hover:bg-blue-500/20 active:scale-95"
           >
             Batal
           </button>
           <button
             type="submit"
-            className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-500"
+            className="flex-1 cursor-pointer rounded-2xl bg-linear-to-r from-blue-600 to-cyan-500 px-3 py-2.5 text-xs font-bold text-white transition duration-200 hover:from-blue-500 hover:to-cyan-400 active:scale-95"
           >
             Buka
           </button>
@@ -180,7 +208,7 @@ function FolderFormModal({
     <ModalShell title={folder ? "Ubah folder" : "Folder baru"} onClose={onClose}>
       <form onSubmit={submit} className="space-y-3">
         <div>
-          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-blue-300">
             Nama folder
           </label>
           <input
@@ -189,11 +217,11 @@ function FolderFormModal({
             onChange={(e) => setName(e.target.value)}
             placeholder="Contoh: Klien"
             autoFocus
-            className="w-full rounded-lg bg-zinc-950 px-3 py-2 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full rounded-2xl border border-blue-400/20 bg-blue-950/60 px-4 py-2.5 text-xs text-white outline-none transition placeholder:text-blue-300/40 focus:border-cyan-300/70"
           />
         </div>
         <div>
-          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-blue-300">
             Sandi (opsional)
           </label>
           <input
@@ -201,21 +229,21 @@ function FolderFormModal({
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Kosongkan jika tanpa sandi"
-            className="w-full rounded-lg bg-zinc-950 px-3 py-2 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full rounded-2xl border border-blue-400/20 bg-blue-950/60 px-4 py-2.5 text-xs text-white outline-none transition placeholder:text-blue-300/40 focus:border-cyan-300/70"
           />
         </div>
         <div className="flex gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 rounded-lg bg-zinc-800 px-3 py-2 text-xs font-medium text-zinc-400 hover:bg-zinc-700"
+            className="flex-1 cursor-pointer rounded-2xl bg-blue-500/10 px-3 py-2.5 text-xs font-semibold text-blue-200 transition duration-200 hover:bg-blue-500/20 active:scale-95"
           >
             Batal
           </button>
           <button
             type="submit"
             disabled={!name.trim()}
-            className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600"
+            className="flex-1 cursor-pointer rounded-2xl bg-linear-to-r from-blue-600 to-cyan-500 px-3 py-2.5 text-xs font-bold text-white transition duration-200 hover:from-blue-500 hover:to-cyan-400 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
           >
             Simpan
           </button>
@@ -224,7 +252,7 @@ function FolderFormModal({
           <button
             type="button"
             onClick={onDelete}
-            className="w-full rounded-lg px-3 py-2 text-xs font-semibold text-red-400 hover:bg-red-950/40"
+            className="w-full cursor-pointer rounded-2xl px-3 py-2.5 text-xs font-semibold text-red-300 transition hover:bg-red-950/40"
           >
             Hapus folder
           </button>
@@ -248,15 +276,15 @@ function MoveModal({
   onMove: (folderId: string | null) => void;
 }) {
   const rowClass = (active: boolean) =>
-    `flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-xs font-semibold transition-colors ${
-      active ? "bg-zinc-800 text-white" : "text-zinc-300 hover:bg-zinc-800"
+    `flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-xs font-semibold transition-colors ${
+      active ? "bg-linear-to-r from-blue-600 to-cyan-500 text-white" : "text-blue-100 hover:bg-blue-500/15"
     }`;
 
   return (
     <ModalShell title={`Simpan ${user.full_name || "kontak"} ke folder`} onClose={onClose}>
-      <div className="custom-scrollbar max-h-64 space-y-1 overflow-y-auto">
+      <div className="scrollbar-biru max-h-64 space-y-1 overflow-y-auto">
         {folders.length === 0 && (
-          <p className="py-2 text-center text-[11px] italic text-zinc-600">
+          <p className="py-2 text-center text-[11px] italic text-blue-300/60">
             Belum ada folder. Buat dulu lewat tombol folder di atas daftar.
           </p>
         )}
@@ -269,7 +297,7 @@ function MoveModal({
           >
             <Icon d={ICONS.folder} className="h-4 w-4 flex-shrink-0" />
             <span className="flex-1 truncate">{f.name}</span>
-            {f.password && <Icon d={ICONS.lockClosed} className="h-3.5 w-3.5 text-zinc-500" />}
+            {f.password && <Icon d={ICONS.lockClosed} className="h-3.5 w-3.5 text-blue-300/70" />}
           </button>
         ))}
         {currentFolderId && (
@@ -282,7 +310,7 @@ function MoveModal({
       <button
         type="button"
         onClick={onClose}
-        className="mt-3 w-full rounded-lg bg-zinc-800 px-3 py-2 text-xs font-medium text-zinc-400 hover:bg-zinc-700"
+        className="mt-3 w-full cursor-pointer rounded-2xl bg-blue-500/10 px-3 py-2.5 text-xs font-semibold text-blue-200 transition duration-200 hover:bg-blue-500/20 active:scale-95"
       >
         Batal
       </button>
@@ -308,6 +336,9 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
   const [typingUsers, setTypingUsers] = useState<Record<string, boolean>>({});
   const typingTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
 
+  // Penanda permintaan terbaru: hasil fetch lama tidak boleh menimpa yang baru
+  const requestIdRef = useRef(0);
+
   // --- FOLDER ---
   const [folders, setFolders] = useState<Folder[]>([]);
   const [assignments, setAssignments] = useState<Record<string, string>>({}); // contact_id -> folder_id
@@ -318,6 +349,8 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
   const closeModal = useCallback(() => setModal(null), []);
 
   const fetchChatUsers = useCallback(async (silent = false) => {
+    const requestId = ++requestIdRef.current;
+
     try {
       if (!silent) setLoading(true);
 
@@ -331,41 +364,43 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
         return;
       }
 
-      // 2. Seluruh riwayat pesan
-      const { data: messages, error: messagesError } = await supabase
-        .from("messages")
-        .select("sender_id, text, created_at, is_admin, is_read")
-        .order("created_at", { ascending: false });
+      // 2. Seluruh riwayat pesan (per halaman, terbaru dulu)
+      const { data: messages, error: messagesError } =
+        await ambilSemuaHalaman<PesanRingkas>((dari, sampai) =>
+          supabase
+            .from("messages")
+            .select("id, sender_id, text, created_at, is_admin, is_read")
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false })
+            .range(dari, sampai)
+        );
 
       if (messagesError) {
-        setError(messagesError.message);
+        setError(messagesError);
         return;
       }
 
+      // Ada permintaan yang lebih baru: abaikan hasil lama ini
+      if (requestId !== requestIdRef.current) return;
+
       // 3. Unread per user
       const unreadCountsMap = new Map<string, number>();
-      if (messages) {
-        messages.forEach((msg: any) => {
-          const senderId = msg.sender_id;
-          if (senderId && !msg.is_admin && !msg.is_read) {
-            unreadCountsMap.set(senderId, (unreadCountsMap.get(senderId) || 0) + 1);
-          }
-        });
-      }
+      messages.forEach((msg) => {
+        if (msg.sender_id && !msg.is_admin && !msg.is_read) {
+          unreadCountsMap.set(msg.sender_id, (unreadCountsMap.get(msg.sender_id) || 0) + 1);
+        }
+      });
 
-      // 4. Pesan terakhir per user
-      const latestMessageMap = new Map<string, { text: string; created_at: string }>();
-      if (messages) {
-        messages.forEach((msg: any) => {
-          const senderId = msg.sender_id;
-          if (senderId && !latestMessageMap.has(senderId)) {
-            latestMessageMap.set(senderId, {
-              text: msg.text,
-              created_at: msg.created_at,
-            });
-          }
-        });
-      }
+      // 4. Pesan terakhir per user (data sudah terurut terbaru dulu)
+      const latestMessageMap = new Map<string, { text: string | null; created_at: string }>();
+      messages.forEach((msg) => {
+        if (msg.sender_id && !latestMessageMap.has(msg.sender_id)) {
+          latestMessageMap.set(msg.sender_id, {
+            text: msg.text,
+            created_at: msg.created_at,
+          });
+        }
+      });
 
       // 5. Gabungkan
       const detailedUsers: ChatUser[] = (profiles || []).map((profile: any) => {
@@ -428,6 +463,15 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
   // --- REALTIME (MESSAGES + PRESENCE + TYPING) ---
   useEffect(() => {
     const typingTimeouts = typingTimeoutsRef.current;
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+
+    // Banyak event beruntun (mis. tandai terbaca) cukup memicu satu fetch
+    const jadwalkanRefresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        void fetchChatUsers(true);
+      }, 300);
+    };
 
     const channel = supabase.channel("sidebar-global-realtime", {
       config: {
@@ -436,9 +480,7 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
     });
 
     channel
-      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => {
-        fetchChatUsers(true);
-      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, jadwalkanRefresh)
       .on("presence", { event: "sync" }, () => {
         const state = channel.presenceState();
         const activeOnlineMap: Record<string, boolean> = {};
@@ -467,10 +509,20 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
           await channel.track({ active_at: new Date().toISOString() });
+          // Sinkron ulang: pesan yang masuk saat koneksi sempat putus ikut terambil
+          jadwalkanRefresh();
         }
       });
 
+    // Saat tab kembali aktif, tarik ulang data (event bisa terlewat di background)
+    const saatTabAktif = () => {
+      if (document.visibilityState === "visible") jadwalkanRefresh();
+    };
+    document.addEventListener("visibilitychange", saatTabAktif);
+
     return () => {
+      document.removeEventListener("visibilitychange", saatTabAktif);
+      if (refreshTimer) clearTimeout(refreshTimer);
       supabase.removeChannel(channel);
       Object.values(typingTimeouts).forEach(clearTimeout);
     };
@@ -556,8 +608,10 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
     return (
       <div
         key={user.id}
-        className={`group flex items-center rounded-xl transition-colors ${
-          isActive ? "bg-zinc-900" : "hover:bg-zinc-900/60"
+        className={`group flex items-center rounded-2xl transition-colors ${
+          isActive
+            ? "bg-linear-to-r from-blue-600/40 to-cyan-500/20 ring-1 ring-cyan-300/30"
+            : "hover:bg-blue-500/10"
         }`}
       >
         <Link
@@ -574,14 +628,14 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-800 text-xs font-bold uppercase text-zinc-400 transition-colors group-hover:text-zinc-200">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-linear-to-br from-blue-500 to-cyan-400 text-xs font-bold uppercase text-white">
                 {nameInitial}
               </div>
             )}
 
             <span
-              className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-zinc-950 transition-colors duration-300 ${
-                isUserOnline ? "bg-emerald-500" : "bg-zinc-700"
+              className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-[#040a16] transition-colors duration-300 ${
+                isUserOnline ? "bg-emerald-500" : "bg-blue-900"
               }`}
             ></span>
           </div>
@@ -592,7 +646,7 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
                 className={`truncate text-xs transition-colors ${
                   isActive
                     ? "font-extrabold text-white"
-                    : "font-semibold text-zinc-300 group-hover:text-zinc-100"
+                    : "font-semibold text-blue-100 group-hover:text-white"
                 }`}
               >
                 {user.full_name || "User"}
@@ -601,7 +655,7 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
               {user.last_message_time && !isUserTyping && (
                 <span
                   className={`flex-shrink-0 select-none font-mono text-[9px] transition-colors ${
-                    isActive ? "font-bold text-blue-500" : "text-zinc-600 group-hover:text-zinc-500"
+                    isActive ? "font-bold text-cyan-300" : "text-blue-300/60 group-hover:text-blue-200"
                   }`}
                 >
                   {new Date(user.last_message_time).toLocaleTimeString("id-ID", {
@@ -616,17 +670,17 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
               <p
                 className={`truncate text-[11px] transition-colors ${
                   isUserTyping
-                    ? "animate-pulse font-medium text-sky-400"
+                    ? "animate-pulse font-medium text-cyan-300"
                     : isActive
-                    ? "text-zinc-300"
-                    : "text-zinc-500 group-hover:text-zinc-400"
+                    ? "text-blue-100"
+                    : "text-blue-300/70 group-hover:text-blue-200"
                 }`}
               >
                 {isUserTyping ? "sedang mengetik..." : user.last_message || "Tidak ada pesan"}
               </p>
 
-              {user.unread_count > 0 && !isUserTyping && (
-                <div className="flex h-4 min-w-[16px] flex-shrink-0 items-center justify-center rounded-full bg-blue-600 px-1 font-mono text-[9px] font-bold text-white">
+              {user.unread_count > 0 && (
+                <div className="flex h-4 min-w-[16px] flex-shrink-0 items-center justify-center rounded-full bg-linear-to-r from-blue-500 to-cyan-400 px-1 font-mono text-[9px] font-bold text-white">
                   {user.unread_count}
                 </div>
               )}
@@ -640,7 +694,7 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
           onClick={() => setModal({ kind: "move", user })}
           title="Simpan ke folder"
           aria-label="Simpan ke folder"
-          className="mr-1 flex-shrink-0 rounded-lg p-1.5 text-zinc-600 transition-opacity hover:bg-zinc-800 hover:text-zinc-300 focus:opacity-100 md:opacity-0 md:group-hover:opacity-100"
+          className="mr-1 flex-shrink-0 rounded-lg p-1.5 text-blue-300/60 transition hover:bg-blue-500/15 hover:text-cyan-200 focus:opacity-100 md:opacity-0 md:group-hover:opacity-100"
         >
           <Icon d={ICONS.folder} className="h-4 w-4" />
         </button>
@@ -657,30 +711,30 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
 
     return (
       <div key={folder.id}>
-        <div className="group flex items-center rounded-xl transition-colors hover:bg-zinc-900/60">
+        <div className="group flex items-center rounded-2xl transition-colors hover:bg-blue-500/10">
           <button
             type="button"
             onClick={() => handleFolderClick(folder)}
             className="flex min-w-0 flex-1 items-center gap-3 px-2 py-2 text-left"
           >
-            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-zinc-900 text-zinc-400">
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-500/15 text-cyan-300">
               <Icon d={locked ? ICONS.lockClosed : ICONS.folder} className="h-4 w-4" />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-xs font-semibold text-zinc-300 group-hover:text-zinc-100">
+              <span className="block truncate text-xs font-semibold text-blue-100 group-hover:text-white">
                 {folder.name}
               </span>
-              <span className="block text-[11px] text-zinc-600">{members.length} kontak</span>
+              <span className="block text-[11px] text-blue-300/60">{members.length} kontak</span>
             </span>
             {unreadTotal > 0 && (
-              <span className="flex h-4 min-w-[16px] flex-shrink-0 items-center justify-center rounded-full bg-blue-600 px-1 font-mono text-[9px] font-bold text-white">
+              <span className="flex h-4 min-w-[16px] flex-shrink-0 items-center justify-center rounded-full bg-linear-to-r from-blue-500 to-cyan-400 px-1 font-mono text-[9px] font-bold text-white">
                 {unreadTotal}
               </span>
             )}
             {!locked && (
               <Icon
                 d={ICONS.chevronDown}
-                className={`h-4 w-4 flex-shrink-0 text-zinc-600 transition-transform duration-200 ${
+                className={`h-4 w-4 flex-shrink-0 text-blue-300/60 transition-transform duration-200 ${
                   isOpen ? "rotate-180" : ""
                 }`}
               />
@@ -694,7 +748,7 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
               onClick={() => relockFolder(folder.id)}
               title="Kunci folder"
               aria-label="Kunci folder"
-              className="flex-shrink-0 rounded-lg p-1.5 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300"
+              className="flex-shrink-0 rounded-lg p-1.5 text-blue-300/60 transition hover:bg-blue-500/15 hover:text-cyan-200"
             >
               <Icon d={ICONS.lockOpen} className="h-4 w-4" />
             </button>
@@ -707,7 +761,7 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
               onClick={() => setModal({ kind: "form", folder })}
               title="Ubah folder"
               aria-label="Ubah folder"
-              className="mr-1 flex-shrink-0 rounded-lg p-1.5 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300"
+              className="mr-1 flex-shrink-0 rounded-lg p-1.5 text-blue-300/60 transition hover:bg-blue-500/15 hover:text-cyan-200"
             >
               <Icon d={ICONS.pencil} className="h-4 w-4" />
             </button>
@@ -719,7 +773,7 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
             {members.length > 0 ? (
               members.map((user) => renderUserItem(user))
             ) : (
-              <p className="px-2 py-2 text-[11px] italic text-zinc-600">Folder masih kosong.</p>
+              <p className="px-2 py-2 text-[11px] italic text-blue-300/60">Folder masih kosong.</p>
             )}
           </div>
         )}
@@ -728,35 +782,35 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
   };
 
   return (
-    <div className="custom-scrollbar flex h-full w-full flex-col justify-between overflow-y-auto bg-zinc-950 p-4 text-zinc-300 antialiased">
+    <div className="scrollbar-biru flex h-full w-full flex-col justify-between overflow-y-auto p-4 pb-24 text-blue-100 antialiased md:pb-4">
       <div>
         <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-sm font-bold uppercase tracking-widest text-zinc-500">Daftar Obrolan</h1>
+          <h1 className="text-sm font-bold uppercase tracking-widest text-blue-200">Daftar Obrolan</h1>
           <button
             type="button"
             onClick={() => setModal({ kind: "form", folder: null })}
             title="Folder baru"
             aria-label="Folder baru"
-            className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-zinc-200"
+            className="cursor-pointer rounded-full p-2 text-blue-300/80 transition duration-200 hover:bg-blue-500/15 hover:text-cyan-200 active:scale-90"
           >
             <Icon d={ICONS.folderPlus} className="h-4 w-4" />
           </button>
         </div>
 
         {loading && users.length === 0 && (
-          <div className="animate-pulse py-8 text-center text-xs font-medium uppercase tracking-widest text-zinc-600">
+          <div className="animate-pulse py-8 text-center text-xs font-medium uppercase tracking-widest text-blue-300/60">
             Sinkronisasi...
           </div>
         )}
 
         {error && (
-          <div className="mb-4 flex items-start justify-between gap-2 rounded-xl bg-red-950/50 p-3 text-xs text-red-400">
+          <div className="mb-4 flex items-start justify-between gap-2 rounded-2xl bg-blue-500/10 p-3 text-xs font-semibold text-sky-200">
             <span className="min-w-0 break-words">{error}</span>
             <button
               type="button"
               onClick={() => setError(null)}
               aria-label="Tutup pesan error"
-              className="flex-shrink-0 text-red-400/70 hover:text-red-300"
+              className="flex-shrink-0 text-sky-200/70 hover:text-sky-100"
             >
               <Icon d={ICONS.close} className="h-3.5 w-3.5" />
             </button>
@@ -771,7 +825,7 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
           {usersWithChat.length > 0
             ? usersWithChat.map((user) => renderUserItem(user))
             : !loading && (
-                <div className="py-4 text-center text-xs text-zinc-600">Belum ada obrolan aktif.</div>
+                <div className="py-4 text-center text-xs text-blue-300/60">Belum ada obrolan aktif.</div>
               )}
         </div>
       </div>
@@ -781,7 +835,7 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
         <div className="mt-auto pt-4">
           <button
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs font-semibold text-zinc-500 transition-colors hover:text-zinc-300"
+            className="flex w-full items-center justify-between rounded-xl px-2 py-2 text-left text-xs font-semibold text-blue-300/80 transition-colors hover:text-cyan-200"
           >
             <span>Hubungi Pengguna Baru ({usersNoChat.length})</span>
             <Icon
@@ -795,31 +849,31 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
               <div className="relative">
                 <Icon
                   d={ICONS.search}
-                  className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600"
+                  className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-blue-300/60"
                 />
                 <input
                   type="text"
                   placeholder="Cari nama user..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full rounded-lg bg-zinc-900 py-2 pl-9 pr-8 text-xs text-zinc-200 placeholder-zinc-600 outline-none transition-colors focus:bg-zinc-800"
+                  className="w-full rounded-2xl border border-blue-400/20 bg-blue-950/60 py-2.5 pl-9 pr-8 text-xs text-white outline-none transition placeholder:text-blue-300/40 focus:border-cyan-300/70"
                 />
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery("")}
                     aria-label="Hapus pencarian"
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-blue-300/60 hover:text-blue-200/80"
                   >
                     <Icon d={ICONS.close} className="h-3.5 w-3.5" />
                   </button>
                 )}
               </div>
 
-              <div className="custom-scrollbar max-h-48 space-y-1 overflow-y-auto pr-1">
+              <div className="scrollbar-biru max-h-48 space-y-1 overflow-y-auto pr-1">
                 {filteredUsersNoChat.length > 0 ? (
                   filteredUsersNoChat.map((user) => renderUserItem(user))
                 ) : (
-                  <div className="py-2 text-center text-[11px] italic text-zinc-600">
+                  <div className="py-2 text-center text-[11px] italic text-blue-300/60">
                     User tidak ditemukan
                   </div>
                 )}
