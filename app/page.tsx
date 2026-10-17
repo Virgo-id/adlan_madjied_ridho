@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase";
 import ChatModal, { CHAT_REOPEN_KEY } from "./components/chat/ChatModal";
 
 const JUMLAH_KARYA = 4;
+const DOMAIN_EMAIL = "@adlanmadjiedridho.com";
 
 interface Post {
   id: string;
@@ -63,12 +64,11 @@ function ambilPengguna(session: Session | null): Pengguna | null {
 
 function terjemahPesan(pesan: string): string {
   const p = pesan.toLowerCase();
-  if (p.includes("invalid login credentials")) return "Email atau password salah.";
-  if (p.includes("email not confirmed")) return "Email belum dikonfirmasi. Cek kotak masuk kamu.";
-  if (p.includes("already registered")) return "Email sudah terdaftar, silakan masuk.";
+  if (p.includes("invalid login credentials")) return "Username atau password salah.";
+  if (p.includes("email not confirmed")) return "Akun belum dikonfirmasi. Hubungi admin.";
   if (p.includes("password should be at least")) return "Password minimal 6 karakter.";
   if (p.includes("invalid email") || p.includes("unable to validate email"))
-    return "Format email tidak valid.";
+    return "Format username tidak valid.";
   if (p.includes("rate limit") || p.includes("too many"))
     return "Terlalu banyak percobaan. Coba lagi beberapa saat lagi.";
   if (p.includes("failed to fetch") || p.includes("network"))
@@ -279,15 +279,6 @@ function IconClose({ className }: IkonProps) {
   );
 }
 
-function IconMail({ className }: IkonProps) {
-  return (
-    <Ikon className={className}>
-      <rect x="3" y="5" width="18" height="14" rx="2" />
-      <path d="m3 7 9 6 9-6" />
-    </Ikon>
-  );
-}
-
 function IconKunci({ className }: IkonProps) {
   return (
     <Ikon className={className}>
@@ -480,20 +471,22 @@ function JudulSeksi({
   );
 }
 
-/* ---------- Modal login (Google + email) ---------- */
+/* ---------- Modal login (Google + username) ---------- */
 
 const KELAS_INPUT =
   "w-full rounded-2xl border border-blue-400/20 bg-blue-950/60 py-3 pl-11 pr-4 text-sm text-white outline-none transition placeholder:text-blue-300/40 focus:border-cyan-300/70 disabled:opacity-60";
 
+// Ambil bagian username saja (buang spasi dan apa pun setelah "@")
+function bersihkanUsername(nilai: string): string {
+  return nilai.trim().toLowerCase().split("@")[0].replace(/\s+/g, "");
+}
+
 function ModalLogin({ onTutup }: { onTutup: () => void }) {
-  const [mode, setMode] = useState<"masuk" | "daftar">("masuk");
-  const [nama, setNama] = useState("");
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [lihat, setLihat] = useState(false);
   const [sibuk, setSibuk] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
 
   useEffect(() => {
     const tekan = (e: KeyboardEvent) => {
@@ -508,15 +501,8 @@ function ModalLogin({ onTutup }: { onTutup: () => void }) {
     };
   }, [onTutup]);
 
-  const ganti = (m: "masuk" | "daftar") => {
-    setMode(m);
-    setError(null);
-    setInfo(null);
-  };
-
   const masukGoogle = async () => {
     setError(null);
-    setInfo(null);
     setSibuk(true);
     const { error: err } = await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -532,10 +518,11 @@ function ModalLogin({ onTutup }: { onTutup: () => void }) {
   const kirim = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setInfo(null);
 
-    if (mode === "daftar" && nama.trim().length < 2) {
-      setError("Isi nama dengan benar.");
+    const namaPengguna = bersihkanUsername(username);
+
+    if (!namaPengguna) {
+      setError("Isi username dengan benar.");
       return;
     }
     if (password.length < 6) {
@@ -545,31 +532,11 @@ function ModalLogin({ onTutup }: { onTutup: () => void }) {
 
     setSibuk(true);
     try {
-      if (mode === "masuk") {
-        const { error: err } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
-        if (err) throw err;
-      } else {
-        const { data, error: err } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-          options: {
-            data: { full_name: nama.trim() },
-            emailRedirectTo: window.location.origin,
-          },
-        });
-        if (err) throw err;
-
-        if (data.user && data.user.identities?.length === 0) {
-          setError("Email sudah terdaftar, silakan masuk.");
-        } else if (!data.session) {
-          setInfo("Pendaftaran berhasil. Cek email kamu untuk konfirmasi, lalu masuk.");
-          setMode("masuk");
-          setPassword("");
-        }
-      }
+      const { error: err } = await supabase.auth.signInWithPassword({
+        email: `${namaPengguna}${DOMAIN_EMAIL}`,
+        password,
+      });
+      if (err) throw err;
     } catch (err) {
       console.error("Gagal autentikasi:", err);
       setError(terjemahPesan(err instanceof Error ? err.message : String(err)));
@@ -577,8 +544,6 @@ function ModalLogin({ onTutup }: { onTutup: () => void }) {
       setSibuk(false);
     }
   };
-
-  const daftar = mode === "daftar";
 
   return (
     <div
@@ -590,7 +555,7 @@ function ModalLogin({ onTutup }: { onTutup: () => void }) {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={daftar ? "Daftar akun" : "Masuk"}
+        aria-label="Masuk"
         className="scrollbar-biru relative max-h-[92vh] w-full max-w-md overflow-y-auto rounded-[2rem] border border-blue-400/30 bg-linear-to-br from-blue-950 to-zinc-950"
       >
         {/* Kepala */}
@@ -615,12 +580,10 @@ function ModalLogin({ onTutup }: { onTutup: () => void }) {
               <IconUser className="h-5 w-5" />
             </span>
             <h2 className="mt-4 text-2xl font-black text-white">
-              {daftar ? "Buat akun" : "Selamat datang"}
+              Selamat datang
             </h2>
             <p className="mt-1 text-sm text-blue-50/90">
-              {daftar
-                ? "Daftar dengan email untuk mulai mengobrol."
-                : "Masuk untuk mulai mengobrol dengan saya."}
+              Masuk untuk mulai mengobrol dengan saya.
             </p>
           </div>
         </div>
@@ -639,58 +602,30 @@ function ModalLogin({ onTutup }: { onTutup: () => void }) {
           <div className="flex items-center gap-3">
             <span className="h-px flex-1 bg-blue-400/20" />
             <span className="text-[10px] font-bold uppercase tracking-widest text-blue-300/60">
-              atau dengan email
+              atau dengan username
             </span>
             <span className="h-px flex-1 bg-blue-400/20" />
           </div>
 
-          {/* Tab Masuk / Daftar */}
-          <div className="grid grid-cols-2 gap-1 rounded-2xl bg-blue-500/10 p-1">
-            {(["masuk", "daftar"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => ganti(m)}
-                className={`cursor-pointer rounded-xl py-2 text-sm font-semibold transition duration-200 active:scale-95 ${
-                  mode === m
-                    ? "bg-linear-to-r from-blue-600 to-cyan-500 text-white"
-                    : "text-blue-200 hover:bg-blue-500/15"
-                }`}
-              >
-                {m === "masuk" ? "Masuk" : "Daftar"}
-              </button>
-            ))}
-          </div>
-
           <form onSubmit={kirim} className="space-y-3">
-            {daftar && (
-              <div className="relative">
-                <IconUser className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-blue-300/70" />
-                <input
-                  type="text"
-                  value={nama}
-                  onChange={(e) => setNama(e.target.value)}
-                  placeholder="Nama lengkap"
-                  autoComplete="name"
-                  required
-                  disabled={sibuk}
-                  className={KELAS_INPUT}
-                />
-              </div>
-            )}
-
             <div className="relative">
-              <IconMail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-blue-300/70" />
+              <IconUser className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-blue-300/70" />
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Email"
-                autoComplete="email"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Username"
+                autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 required
                 disabled={sibuk}
-                className={KELAS_INPUT}
+                className={`${KELAS_INPUT} pr-44`}
               />
+              <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-xs font-semibold text-blue-300/60">
+                {DOMAIN_EMAIL}
+              </span>
             </div>
 
             <div className="relative">
@@ -700,7 +635,7 @@ function ModalLogin({ onTutup }: { onTutup: () => void }) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Password (min. 6 karakter)"
-                autoComplete={daftar ? "new-password" : "current-password"}
+                autoComplete="current-password"
                 required
                 disabled={sibuk}
                 className={`${KELAS_INPUT} pr-12`}
@@ -723,21 +658,13 @@ function ModalLogin({ onTutup }: { onTutup: () => void }) {
                 {error}
               </p>
             )}
-            {info && (
-              <p
-                role="status"
-                className="rounded-2xl bg-linear-to-r from-blue-500/30 to-cyan-400/20 px-4 py-3 text-xs font-semibold text-cyan-100"
-              >
-                {info}
-              </p>
-            )}
 
             <button
               type="submit"
               disabled={sibuk}
               className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-linear-to-r from-blue-600 to-cyan-500 px-4 py-3 text-sm font-bold text-white transition duration-200 ease-out hover:scale-[1.02] hover:from-blue-500 hover:to-cyan-400 active:scale-95 active:from-blue-700 active:to-cyan-600 disabled:cursor-wait disabled:opacity-60 disabled:hover:scale-100"
             >
-              {sibuk ? "Memproses..." : daftar ? "Daftar Sekarang" : "Masuk"}
+              {sibuk ? "Memproses..." : "Masuk"}
               {!sibuk && <IconPanah />}
             </button>
           </form>

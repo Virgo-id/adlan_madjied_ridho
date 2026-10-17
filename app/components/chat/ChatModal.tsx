@@ -9,6 +9,11 @@ import {
 } from "react";
 import Image from "next/image";
 import { supabase } from "@/lib/supabase";
+import ChatAttachment from "@/app/components/chat/ChatAttachment";
+import {
+  removeChatAttachment,
+  uploadChatAttachment,
+} from "@/lib/chat-attachments";
 
 /** Dipakai halaman utama: jika di-set, chat dibuka lagi setelah halaman dimuat ulang (mis. login Google). */
 export const CHAT_REOPEN_KEY = "amr-chat-reopen";
@@ -31,6 +36,10 @@ interface Message {
   updated_at: string;
   reply_to_id?: string | null;
   is_read: boolean;
+  attachment_path?: string | null;
+  attachment_name?: string | null;
+  attachment_type?: string | null;
+  attachment_size?: number | null;
   status?: "sending" | "sent";
 }
 
@@ -48,7 +57,7 @@ interface ChatModalProps {
 }
 
 const KOLOM_PESAN =
-  "id, sender_id, text, is_admin, created_at, updated_at, reply_to_id, is_read";
+  "id, sender_id, text, is_admin, created_at, updated_at, reply_to_id, is_read, attachment_path, attachment_name, attachment_type, attachment_size";
 
 /* ---------- Ikon SVG ---------- */
 
@@ -89,6 +98,14 @@ function IconKirim({ className }: { className?: string }) {
     <Ikon className={className}>
       <path d="M22 2 11 13" />
       <path d="M22 2 15 22l-4-9-9-4Z" />
+    </Ikon>
+  );
+}
+
+function IconLampiran({ className }: { className?: string }) {
+  return (
+    <Ikon className={className}>
+      <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.82-2.83l8.48-8.48" />
     </Ikon>
   );
 }
@@ -280,6 +297,7 @@ function ItemMenu({
 export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [memuat, setMemuat] = useState(true);
@@ -309,6 +327,7 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
   const [isAdminTyping, setIsAdminTyping] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const chatMenuRef = useRef<HTMLDivElement>(null);
   const headerMenuRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -803,15 +822,17 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!text.trim() || !user) return;
+    if ((!text.trim() && !selectedFile) || !user) return;
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     kirimSinyalMengetik(false);
 
     const messageToSend = text;
+    const fileToSend = selectedFile;
     const currentReplyId = replyingTo?.id || null;
 
     setText("");
+    setSelectedFile(null);
     setReplyingTo(null);
 
     const tempId = `temp-${Date.now()}`;
@@ -830,15 +851,26 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
     scrollModeRef.current = "bottom";
     setMessages((prev) => [...prev, optimisticMessage]);
 
+    let uploadedAttachment: Awaited<ReturnType<typeof uploadChatAttachment>> | null = null;
     try {
+      if (fileToSend) {
+        uploadedAttachment = await uploadChatAttachment(fileToSend, user.id);
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === tempId ? { ...msg, ...uploadedAttachment } : msg
+          )
+        );
+      }
+
       const { data, error } = await supabase
         .from("messages")
         .insert({
           sender_id: user.id,
-          text: messageToSend,
+          text: messageToSend.trim(),
           is_admin: false,
           reply_to_id: currentReplyId,
           is_read: false,
+          ...(uploadedAttachment ?? {}),
         })
         .select()
         .single();
@@ -846,6 +878,9 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
       if (error) {
         setMessages((prev) => prev.filter((msg) => msg.id !== tempId));
         setText(messageToSend);
+        setSelectedFile(fileToSend);
+        if (uploadedAttachment) await removeChatAttachment(uploadedAttachment.attachment_path);
+        alert("Gagal mengirim pesan atau lampiran.");
         return;
       }
 
@@ -864,9 +899,19 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
           )
         );
       }
-    } catch {
+    } catch (error) {
       setMessages((prev) => prev.filter((msg) => msg.id !== tempId));
       setText(messageToSend);
+      setSelectedFile(fileToSend);
+      if (uploadedAttachment) {
+        try {
+          await removeChatAttachment(uploadedAttachment.attachment_path);
+        } catch (cleanupError) {
+          console.error("Gagal membersihkan lampiran yang gagal dikirim:", cleanupError);
+        }
+      }
+      console.error("Gagal mengirim pesan:", error);
+      alert(error instanceof Error ? error.message : "Gagal mengirim pesan.");
     }
   };
 
@@ -894,17 +939,69 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
   const executeDeleteMessage = async () => {
     if (!deleteTargetId) return;
 
-    const { error } = await supabase
-      .from("messages")
-      .delete()
-      .eq("id", deleteTargetId);
+    const message = messagesRef.current.find((item) => item.id === deleteTargetId);
+    try {
+      if (message?.attachment_path) {
+        await removeChatAttachment(message.attachment_path);
+      }
 
-    if (error) {
-      alert("Gagal menghapus pesan");
-    } else {
+      const { error } = await supabase
+        .from("messages")
+        .delete()
+        .eq("id", deleteTargetId)
+        .eq("sender_id", user?.id);
+      if (error) throw error;
+
       setMessages((prev) => prev.filter((msg) => msg.id !== deleteTargetId));
+    } catch (error) {
+      console.error("Gagal menghapus pesan chat:", error);
+      alert(error instanceof Error ? error.message : "Gagal menghapus pesan.");
     }
     setDeleteTargetId(null);
+  };
+
+  const handleRemoveAttachment = async (message: Message): Promise<boolean> => {
+    if (!message.attachment_path || !user || message.sender_id !== user.id) return false;
+    if (!confirm("Hapus pesan ini beserta file atau gambarnya?")) return false;
+
+    try {
+      await removeChatAttachment(message.attachment_path);
+    } catch (error) {
+      console.error("Gagal menghapus file dari Supabase Storage:", error);
+      alert(error instanceof Error ? error.message : "Gagal menghapus file dari Storage.");
+      return false;
+    }
+
+    const { data, error } = await supabase
+      .from("messages")
+      .delete()
+      .eq("id", message.id)
+      .eq("sender_id", user.id)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      console.error("Gagal menghapus lampiran pesan:", {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      });
+      alert(`File sudah dihapus, tetapi pesan tidak terhapus: ${error.message}`);
+      return false;
+    }
+
+    if (!data) {
+      console.error(
+        "File sudah dihapus, tetapi pesan tidak ditemukan atau DELETE ditolak oleh policy RLS."
+      );
+      alert("File sudah dihapus, tetapi pesan tidak terhapus. Periksa policy DELETE pada tabel messages.");
+      return false;
+    }
+
+    setMessages((prev) => prev.filter((item) => item.id !== message.id));
+    setOpenMenuId(null);
+    return true;
   };
 
   const handleLogout = async () => {
@@ -1286,31 +1383,43 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
                                 </div>
                               )}
 
-                              {/* Klik = buka dropdown, klik dua kali = tutup dropdown */}
-                              <div
-                                data-bubble
-                                onMouseDown={(e) => {
-                                  // Cegah teks terseleksi saat klik dua kali
-                                  if (e.detail > 1) e.preventDefault();
-                                }}
-                                onClick={() => setOpenMenuId(msg.id)}
-                                onDoubleClick={() => setOpenMenuId(null)}
-                                className={`cursor-pointer touch-manipulation select-text break-words px-4 py-2.5 text-sm leading-relaxed transition duration-200 hover:scale-[1.01] ${
-                                  msg.is_admin
-                                    ? `border border-blue-400/20 bg-blue-500/10 text-blue-50 hover:bg-blue-500/20 ${
-                                        repliedMsg
-                                          ? "rounded-b-2xl rounded-tr-2xl"
-                                          : "rounded-2xl rounded-tl-md"
-                                      }`
-                                    : `bg-linear-to-br from-blue-600 to-cyan-500 text-white ${
-                                        repliedMsg
-                                          ? "rounded-b-2xl rounded-tl-2xl"
-                                          : "rounded-2xl rounded-tr-md"
-                                      }`
-                                }`}
-                              >
-                                {msg.text}
-                              </div>
+                              {msg.text && (
+                                <div
+                                  data-bubble
+                                  onMouseDown={(e) => {
+                                    if (e.detail > 1) e.preventDefault();
+                                  }}
+                                  onClick={() => setOpenMenuId(msg.id)}
+                                  onDoubleClick={() => setOpenMenuId(null)}
+                                  className={`cursor-pointer touch-manipulation select-text break-words px-4 py-2.5 text-sm leading-relaxed transition duration-200 hover:scale-[1.01] ${
+                                    msg.is_admin
+                                      ? `border border-blue-400/20 bg-blue-500/10 text-blue-50 hover:bg-blue-500/20 ${
+                                          repliedMsg
+                                            ? "rounded-b-2xl rounded-tr-2xl"
+                                            : "rounded-2xl rounded-tl-md"
+                                        }`
+                                      : `bg-linear-to-br from-blue-600 to-cyan-500 text-white ${
+                                          repliedMsg
+                                            ? "rounded-b-2xl rounded-tl-2xl"
+                                            : "rounded-2xl rounded-tr-md"
+                                        }`
+                                  }`}
+                                >
+                                  {msg.text}
+                                </div>
+                              )}
+                              {msg.attachment_path && (
+                                <ChatAttachment
+                                  path={msg.attachment_path}
+                                  name={msg.attachment_name || "Lampiran"}
+                                  type={msg.attachment_type ?? null}
+                                  onDelete={
+                                    !msg.is_admin && msg.sender_id === user?.id
+                                      ? () => handleRemoveAttachment(msg)
+                                      : undefined
+                                  }
+                                />
+                              )}
 
                               {openMenuId === msg.id && (
                                 <div
@@ -1329,6 +1438,16 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
                                   >
                                     Balas
                                   </ItemMenu>
+
+                                  {!msg.is_admin && msg.attachment_path && (
+                                    <ItemMenu
+                                      ikon={<IconSampah className="h-5 w-5" />}
+                                      warnaIkon="text-sky-300"
+                                      onClick={() => void handleRemoveAttachment(msg)}
+                                    >
+                                      Hapus pesan
+                                    </ItemMenu>
+                                  )}
 
                                   {!msg.is_admin && (
                                     <>
@@ -1423,7 +1542,43 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
                   </div>
                 )}
 
+                {selectedFile && (
+                  <div className="flex items-center justify-between gap-3 border-b border-blue-400/15 bg-blue-500/10 px-4 py-2">
+                    <span className="truncate text-xs text-blue-100">
+                      <span className="mr-2 inline-flex align-middle">
+                        <IconLampiran className="h-4 w-4" />
+                      </span>
+                      {selectedFile.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedFile(null)}
+                      aria-label="Hapus lampiran pilihan"
+                      className="shrink-0 text-xs text-blue-200 hover:text-white"
+                    >
+                      Hapus
+                    </button>
+                  </div>
+                )}
+
                 <div className="flex items-center gap-2 px-3 py-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={(event) => {
+                      setSelectedFile(event.target.files?.[0] ?? null);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label="Lampirkan file atau gambar"
+                    className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl text-blue-200 transition hover:bg-blue-500/20 hover:text-cyan-200"
+                  >
+                    <IconLampiran className="h-5 w-5" />
+                  </button>
                   <input
                     value={text}
                     onChange={handleInputChange}
@@ -1436,7 +1591,7 @@ export default function ChatModal({ open, onClose, onMasuk }: ChatModalProps) {
                   />
                   <button
                     type="submit"
-                    disabled={!text.trim()}
+                    disabled={!text.trim() && !selectedFile}
                     aria-label="Kirim pesan"
                     className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl bg-linear-to-r from-blue-600 to-cyan-500 text-white transition duration-200 ease-out hover:scale-105 hover:from-blue-500 hover:to-cyan-400 active:scale-90 active:from-blue-700 active:to-cyan-600 disabled:cursor-not-allowed disabled:from-blue-900/60 disabled:to-blue-900/60 disabled:text-blue-300/40 disabled:hover:scale-100"
                   >

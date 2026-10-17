@@ -1,3 +1,4 @@
+// src/app/admin/layout.tsx
 "use client";
 
 import { usePathname } from "next/navigation";
@@ -5,6 +6,15 @@ import Sidebar from "./components/Sidebar";
 
 // Lebar sidebar desktop saat ciut (harus sama dengan w-[4.5rem] di Sidebar)
 const LEBAR_SIDEBAR = "md:left-[4.5rem]";
+
+// Satu layer saja: gradasi gelap (agar teks terbaca) + gambar latar digabung dalam satu background-image.
+// Sebelumnya dua layer fixed layar penuh yang bertumpuk, jadi browser meng-composite dua kali.
+const LATAR =
+  "linear-gradient(to bottom, rgba(4,10,22,0.70), rgba(4,10,22,0.60), rgba(4,10,22,0.85)), " +
+  "url('/image/bg/bg.png')";
+
+// Pengganti glow blur-[130px]: radial-gradient statis, tanpa filter blur (jauh lebih ringan di GPU lemah)
+const GLOW = "radial-gradient(circle, rgba(59,130,246,0.12) 0%, rgba(59,130,246,0) 70%)";
 
 export default function AdminLayout({
   children,
@@ -20,26 +30,20 @@ export default function AdminLayout({
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-[#040a16] font-sans text-zinc-50 antialiased selection:bg-cyan-400/25">
-      {/* BACKGROUND GAMBAR
+      {/* BACKGROUND (gambar + lapisan gelap dalam satu layer).
           Di desktop dimulai setelah sidebar (left-[4.5rem]) sehingga tidak tertimpa.
-          Posisi gambar: di mobile (layar sempit, gambar terpotong) yang terlihat bagian KIRI,
-          di desktop tetap di tengah. */}
+          Posisi gambar: di mobile yang terlihat bagian KIRI, di desktop tetap di tengah. */}
       <div
         aria-hidden="true"
         className={`pointer-events-none fixed inset-0 z-0 bg-cover bg-left bg-no-repeat md:bg-center ${LEBAR_SIDEBAR}`}
-        style={{ backgroundImage: "url('/image/bg/bg.png')" }}
+        style={{ backgroundImage: LATAR }}
       />
 
-      {/* Lapisan gelap agar teks tetap terbaca di atas gambar */}
+      {/* Glow biru global (tanpa blur) */}
       <div
         aria-hidden="true"
-        className={`pointer-events-none fixed inset-0 z-0 bg-linear-to-b from-[#040a16]/70 via-[#040a16]/60 to-[#040a16]/85 ${LEBAR_SIDEBAR}`}
-      />
-
-      {/* Glow biru global */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute left-[25%] top-[-10%] z-0 h-[600px] w-[600px] rounded-full bg-blue-500/10 blur-[130px]"
+        className="pointer-events-none absolute left-[25%] top-[-10%] z-0 h-[600px] w-[600px]"
+        style={{ backgroundImage: GLOW }}
       />
 
       {/* STRUKTUR UTAMA WORKSPACE */}

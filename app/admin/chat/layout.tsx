@@ -6,8 +6,10 @@ import ChatListSidebar from "./ChatListSidebar";
 
 // Gaya panel: tembus pandang penuh (tanpa warna latar dan tanpa blur),
 // hanya berupa bingkai. Di desktop bersudut lengkung dengan border biru tipis.
+// [contain:layout_paint] membatasi hitung ulang layout/cat ke dalam panel itu sendiri,
+// jadi pembaruan di satu panel tidak memicu kerja ulang di panel sebelahnya.
 const PANEL =
-  "relative h-full w-full overflow-hidden " +
+  "relative h-full w-full overflow-hidden [contain:layout_paint] " +
   "md:rounded-2xl md:border md:border-blue-400/30";
 
 export default function AdminChatLayout({

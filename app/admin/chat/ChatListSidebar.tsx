@@ -1,7 +1,7 @@
 // src/app/admin/chat/ChatListSidebar.tsx
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 
@@ -11,6 +11,7 @@ type ChatUser = {
   avatar_url: string | null;
   last_message: string | null;
   last_message_time: string | null;
+  last_ts: number; // last_message_time dalam milidetik (dihitung sekali, bukan tiap render/sort)
   unread_count: number;
 };
 
@@ -319,6 +320,189 @@ function MoveModal({
 }
 
 /* ---------------------------------------------------------------
+   UTILITAS RINGAN
+---------------------------------------------------------------- */
+
+// Formatter dibuat sekali (membuat Intl di setiap render sangat berat di HP lawas)
+const FORMAT_JAM = new Intl.DateTimeFormat("id-ID", { hour: "2-digit", minute: "2-digit" });
+
+const PANJANG_PRATINJAU = 80;
+const BATAS_TAMPIL_TANPA_CHAT = 40;
+const KOSONG: ChatUser[] = [];
+
+// Riwayat pesan dimuat per halaman (infinite scroll), bukan sekaligus
+const UKURAN_HALAMAN_SIDEBAR = 300;
+const KOLOM_PESAN = "id, sender_id, text, created_at, is_admin, is_read";
+
+// Mengambil `jumlah` pesan terbaru (dipecah per 1000 baris sesuai batas Supabase).
+// `habis` = true jika seluruh pesan sudah terambil (tidak ada lagi di belakang).
+async function ambilPesanTerbaru(jumlah: number) {
+  const hasil: PesanRingkas[] = [];
+  while (hasil.length < jumlah) {
+    const ukuran = Math.min(UKURAN_HALAMAN, jumlah - hasil.length);
+    const { data, error } = await supabase
+      .from("messages")
+      .select(KOLOM_PESAN)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(hasil.length, hasil.length + ukuran - 1);
+    if (error) return { data: hasil, error: error.message, habis: false };
+    hasil.push(...((data ?? []) as PesanRingkas[]));
+    if (!data || data.length < ukuran) return { data: hasil, error: null, habis: true };
+  }
+  return { data: hasil, error: null, habis: false };
+}
+
+// Item di luar layar tidak dihitung layout/paint-nya (virtualisasi murah tanpa library)
+const ITEM_LAZY = "[content-visibility:auto] [contain-intrinsic-size:auto_52px]";
+
+function pratinjau(text: string | null | undefined) {
+  return text ? text.slice(0, PANJANG_PRATINJAU) : null;
+}
+
+function keWaktu(iso: string | null | undefined) {
+  if (!iso) return 0;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : 0;
+}
+
+function kunciUrut(u: ChatUser) {
+  return u.last_message_time ? u.last_ts : -1;
+}
+
+function samaUser(a: ChatUser, b: ChatUser) {
+  return (
+    a.full_name === b.full_name &&
+    a.avatar_url === b.avatar_url &&
+    a.last_message === b.last_message &&
+    a.last_message_time === b.last_message_time &&
+    a.unread_count === b.unread_count
+  );
+}
+
+function samaPeta(a: Record<string, boolean>, b: Record<string, boolean>) {
+  const ka = Object.keys(a);
+  if (ka.length !== Object.keys(b).length) return false;
+  return ka.every((k) => a[k] === b[k]);
+}
+
+/* ---------------------------------------------------------------
+   ITEM USER (memo: hanya dirender ulang kalau datanya berubah)
+---------------------------------------------------------------- */
+
+const UserItem = memo(function UserItem({
+  user,
+  isActive,
+  isOnline,
+  isTyping,
+  onMove,
+}: {
+  user: ChatUser;
+  isActive: boolean;
+  isOnline: boolean;
+  isTyping: boolean;
+  onMove: (user: ChatUser) => void;
+}) {
+  const nameInitial = (user.full_name || "U").charAt(0);
+  const waktu = user.last_message_time && user.last_ts > 0 ? FORMAT_JAM.format(user.last_ts) : null;
+
+  return (
+    <div
+      className={`group flex items-center rounded-2xl border transition-colors ${ITEM_LAZY} ${
+        isActive
+          ? "border-cyan-300/30 bg-linear-to-r from-blue-600/40 to-cyan-500/20"
+          : "border-transparent hover:bg-blue-500/10"
+      }`}
+    >
+      <Link
+        href={`/admin/chat/${user.id}`}
+        prefetch={false}
+        className="flex min-w-0 flex-1 select-none items-center gap-3 px-2 py-2"
+      >
+        <div className="relative flex-shrink-0">
+          {user.avatar_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={user.avatar_url}
+              alt={user.full_name || "User"}
+              className="h-9 w-9 rounded-full object-cover"
+              referrerPolicy="no-referrer"
+              loading="lazy"
+              decoding="async"
+              width={36}
+              height={36}
+            />
+          ) : (
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-linear-to-br from-blue-500 to-cyan-400 text-xs font-bold uppercase text-white">
+              {nameInitial}
+            </div>
+          )}
+
+          <span
+            className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-[#040a16] ${
+              isOnline ? "bg-emerald-500" : "bg-blue-900"
+            }`}
+          ></span>
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-col justify-center">
+          <div className="flex items-baseline justify-between gap-1.5">
+            <p
+              className={`truncate text-xs ${
+                isActive ? "font-extrabold text-white" : "font-semibold text-blue-100 group-hover:text-white"
+              }`}
+            >
+              {user.full_name || "User"}
+            </p>
+
+            {waktu && !isTyping && (
+              <span
+                className={`flex-shrink-0 select-none font-mono text-[9px] ${
+                  isActive ? "font-bold text-cyan-300" : "text-blue-300/60 group-hover:text-blue-200"
+                }`}
+              >
+                {waktu}
+              </span>
+            )}
+          </div>
+
+          <div className="mt-0.5 flex items-center justify-between gap-2">
+            <p
+              className={`truncate text-[11px] ${
+                isTyping
+                  ? "font-medium text-cyan-300"
+                  : isActive
+                  ? "text-blue-100"
+                  : "text-blue-300/70 group-hover:text-blue-200"
+              }`}
+            >
+              {isTyping ? "sedang mengetik..." : user.last_message || "Tidak ada pesan"}
+            </p>
+
+            {user.unread_count > 0 && (
+              <div className="flex h-4 min-w-[16px] flex-shrink-0 items-center justify-center rounded-full bg-linear-to-r from-blue-500 to-cyan-400 px-1 font-mono text-[9px] font-bold text-white">
+                {user.unread_count}
+              </div>
+            )}
+          </div>
+        </div>
+      </Link>
+
+      {/* Simpan kontak ke folder (di desktop muncul saat hover) */}
+      <button
+        type="button"
+        onClick={() => onMove(user)}
+        title="Simpan ke folder"
+        aria-label="Simpan ke folder"
+        className="mr-1 flex-shrink-0 rounded-lg p-1.5 text-blue-300/60 transition hover:bg-blue-500/15 hover:text-cyan-200 focus:opacity-100 md:opacity-0 md:group-hover:opacity-100"
+      >
+        <Icon d={ICONS.folder} className="h-4 w-4" />
+      </button>
+    </div>
+  );
+});
+
+/* ---------------------------------------------------------------
    KOMPONEN UTAMA
 ---------------------------------------------------------------- */
 
@@ -330,14 +514,24 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
   // --- DROPDOWN & PENCARIAN (pengguna tanpa chat) ---
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  // Pencarian diproses dengan prioritas rendah supaya mengetik tetap lancar
+  const deferredQuery = useDeferredValue(searchQuery);
 
   // --- REALTIME STATUS ---
   const [onlineUsers, setOnlineUsers] = useState<Record<string, boolean>>({});
   const [typingUsers, setTypingUsers] = useState<Record<string, boolean>>({});
-  const typingTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const typingTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // Penanda permintaan terbaru: hasil fetch lama tidak boleh menimpa yang baru
   const requestIdRef = useRef(0);
+  const lastFetchRef = useRef(0);
+  const offsetRef = useRef(0); // jumlah pesan terbaru yang sudah dimuat ke sidebar
+  const hasMoreRef = useRef(true);
+  const loadingMoreRef = useRef(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   // --- FOLDER ---
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -347,87 +541,161 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
   const [modal, setModal] = useState<Modal>(null);
 
   const closeModal = useCallback(() => setModal(null), []);
+  const bukaModalPindah = useCallback((user: ChatUser) => setModal({ kind: "move", user }), []);
 
+  // Pengambilan ulang (reset): profil + unread (hanya baris yang belum terbaca) + pesan terbaru.
+  // Riwayat yang lebih lama dimuat bertahap lewat infinite scroll (loadMore).
+  // Pesan baru / terbaca / diedit ditangani bertahap di efek realtime (tanpa mengunduh ulang).
   const fetchChatUsers = useCallback(async (silent = false) => {
     const requestId = ++requestIdRef.current;
+    lastFetchRef.current = Date.now();
 
     try {
       if (!silent) setLoading(true);
 
-      // 1. Semua profil user
-      const { data: profiles, error: profilesError } = await supabase
-        .from("profiles")
-        .select("id, full_name, avatar_url");
+      // Pertahankan jumlah pesan yang sudah dimuat supaya refresh tidak memotong daftar
+      const jumlah = Math.max(UKURAN_HALAMAN_SIDEBAR, offsetRef.current);
 
-      if (profilesError) {
-        setError(profilesError.message);
-        return;
-      }
-
-      // 2. Seluruh riwayat pesan (per halaman, terbaru dulu)
-      const { data: messages, error: messagesError } =
-        await ambilSemuaHalaman<PesanRingkas>((dari, sampai) =>
+      const [profilesRes, unreadRes, pesanRes] = await Promise.all([
+        supabase.from("profiles").select("id, full_name, avatar_url"),
+        // Unread akurat untuk semua user sejak awal; barisnya sedikit karena hanya yang belum dibaca
+        ambilSemuaHalaman<{ sender_id: string | null }>((dari, sampai) =>
           supabase
             .from("messages")
-            .select("id, sender_id, text, created_at, is_admin, is_read")
-            .order("created_at", { ascending: false })
-            .order("id", { ascending: false })
+            .select("sender_id")
+            .eq("is_admin", false)
+            .eq("is_read", false)
+            .order("id", { ascending: true })
             .range(dari, sampai)
-        );
+        ),
+        ambilPesanTerbaru(jumlah),
+      ]);
 
-      if (messagesError) {
-        setError(messagesError);
+      if (profilesRes.error) {
+        setError(profilesRes.error.message);
+        return;
+      }
+      if (unreadRes.error) {
+        setError(unreadRes.error);
+        return;
+      }
+      if (pesanRes.error) {
+        setError(pesanRes.error);
         return;
       }
 
       // Ada permintaan yang lebih baru: abaikan hasil lama ini
       if (requestId !== requestIdRef.current) return;
 
-      // 3. Unread per user
-      const unreadCountsMap = new Map<string, number>();
-      messages.forEach((msg) => {
-        if (msg.sender_id && !msg.is_admin && !msg.is_read) {
-          unreadCountsMap.set(msg.sender_id, (unreadCountsMap.get(msg.sender_id) || 0) + 1);
-        }
-      });
+      offsetRef.current = pesanRes.data.length;
+      hasMoreRef.current = !pesanRes.habis;
+      setHasMore(!pesanRes.habis);
 
-      // 4. Pesan terakhir per user (data sudah terurut terbaru dulu)
-      const latestMessageMap = new Map<string, { text: string | null; created_at: string }>();
-      messages.forEach((msg) => {
-        if (msg.sender_id && !latestMessageMap.has(msg.sender_id)) {
-          latestMessageMap.set(msg.sender_id, {
-            text: msg.text,
-            created_at: msg.created_at,
-          });
-        }
-      });
+      const unreadMap = new Map<string, number>();
+      for (const r of unreadRes.data) {
+        if (r.sender_id) unreadMap.set(r.sender_id, (unreadMap.get(r.sender_id) || 0) + 1);
+      }
 
-      // 5. Gabungkan
-      const detailedUsers: ChatUser[] = (profiles || []).map((profile: any) => {
-        const latestMsg = latestMessageMap.get(profile.id);
+      // Pesan terakhir per user (data sudah terurut terbaru dulu)
+      const terakhirMap = new Map<string, { text: string | null; created_at: string }>();
+      for (const msg of pesanRes.data) {
+        if (msg.sender_id && !terakhirMap.has(msg.sender_id)) {
+          terakhirMap.set(msg.sender_id, { text: msg.text, created_at: msg.created_at });
+        }
+      }
+
+      const baru: ChatUser[] = (profilesRes.data || []).map((profile: any) => {
+        const terakhir = terakhirMap.get(profile.id);
         return {
           id: profile.id,
           full_name: profile.full_name || "User Tanpa Nama",
           avatar_url: profile.avatar_url || null,
-          last_message: latestMsg?.text || null,
-          last_message_time: latestMsg?.created_at || null,
-          unread_count: unreadCountsMap.get(profile.id) || 0,
+          last_message: pratinjau(terakhir?.text),
+          last_message_time: terakhir?.created_at || null,
+          last_ts: keWaktu(terakhir?.created_at),
+          unread_count: unreadMap.get(profile.id) || 0,
         };
       });
 
-      // 6. Urutkan: chat terbaru di atas
-      detailedUsers.sort((a, b) => {
-        if (a.last_message_time && b.last_message_time) {
-          return new Date(b.last_message_time).getTime() - new Date(a.last_message_time).getTime();
-        }
-        return a.last_message_time ? -1 : b.last_message_time ? 1 : 0;
-      });
+      // Urutkan: chat terbaru di atas (waktu sudah dihitung sekali, bukan per perbandingan)
+      baru.sort((a, b) => kunciUrut(b) - kunciUrut(a));
 
-      setUsers(detailedUsers);
+      // Pakai ulang objek lama yang isinya sama, supaya item memo tidak dirender ulang
+      setUsers((prev) => {
+        const lama = new Map(prev.map((u) => [u.id, u]));
+        return baru.map((u) => {
+          const o = lama.get(u.id);
+          return o && samaUser(o, u) ? o : u;
+        });
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan");
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  // Infinite scroll: muat halaman pesan berikutnya (yang lebih lama) lalu lengkapi
+  // "pesan terakhir" untuk user yang belum punya. Halaman lebih lama tidak pernah menimpa data yang sudah ada.
+  const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current || !hasMoreRef.current) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    const requestId = requestIdRef.current;
+
+    try {
+      const { data, error: err } = await supabase
+        .from("messages")
+        .select(KOLOM_PESAN)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(offsetRef.current, offsetRef.current + UKURAN_HALAMAN_SIDEBAR - 1);
+
+      // Daftar di-reset saat permintaan ini berjalan: hasilnya sudah tidak relevan
+      if (requestId !== requestIdRef.current) return;
+
+      if (err) {
+        setError(err.message);
+        hasMoreRef.current = false;
+        setHasMore(false);
+        return;
+      }
+
+      const rows = (data ?? []) as PesanRingkas[];
+      offsetRef.current += rows.length;
+      if (rows.length < UKURAN_HALAMAN_SIDEBAR) {
+        hasMoreRef.current = false;
+        setHasMore(false);
+      }
+
+      const terakhirMap = new Map<string, { text: string | null; created_at: string }>();
+      for (const msg of rows) {
+        if (msg.sender_id && !terakhirMap.has(msg.sender_id)) {
+          terakhirMap.set(msg.sender_id, { text: msg.text, created_at: msg.created_at });
+        }
+      }
+
+      setUsers((prev) => {
+        let berubah = false;
+        const next = prev.map((u) => {
+          if (u.last_message_time) return u;
+          const t = terakhirMap.get(u.id);
+          if (!t) return u;
+          berubah = true;
+          return {
+            ...u,
+            last_message: pratinjau(t.text),
+            last_message_time: t.created_at,
+            last_ts: keWaktu(t.created_at),
+          };
+        });
+        if (!berubah) return prev;
+        next.sort((a, b) => kunciUrut(b) - kunciUrut(a));
+        return next;
+      });
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
     }
   }, []);
 
@@ -460,17 +728,145 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
     fetchFolders();
   }, [fetchChatUsers, fetchFolders]);
 
+  // Sentinel di dasar daftar: begitu terlihat, muat halaman berikutnya.
+  // Efek dibuat ulang setelah tiap pemuatan, jadi kalau sentinel masih terlihat akan lanjut memuat.
+  useEffect(() => {
+    const el = sentinelRef.current;
+    const root = scrollRef.current;
+    if (!el || !root || !hasMore || loadingMore || loading) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) void loadMore();
+      },
+      { root, rootMargin: "300px 0px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, loading, loadMore]);
+
   // --- REALTIME (MESSAGES + PRESENCE + TYPING) ---
   useEffect(() => {
     const typingTimeouts = typingTimeoutsRef.current;
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    let unreadTimer: ReturnType<typeof setTimeout> | undefined;
+    let pernahTersambung = false;
+    const perluHitungUlang = new Set<string>();
 
-    // Banyak event beruntun (mis. tandai terbaca) cukup memicu satu fetch
-    const jadwalkanRefresh = () => {
+    // Pengambilan penuh (dipakai untuk hapus pesan, sambung ulang, kembali ke tab)
+    const jadwalkanRefresh = (tunda = 800) => {
       if (refreshTimer) clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {
         void fetchChatUsers(true);
-      }, 300);
+      }, tunda);
+    };
+
+    // Hitung ulang unread hanya untuk user yang terdampak (query count ringan, tanpa unduh pesan)
+    const hitungUlangUnread = async () => {
+      const ids = Array.from(perluHitungUlang);
+      perluHitungUlang.clear();
+      if (ids.length === 0) return;
+
+      const hasil = await Promise.all(
+        ids.map(async (id) => {
+          const { count, error: err } = await supabase
+            .from("messages")
+            .select("id", { count: "exact", head: true })
+            .eq("sender_id", id)
+            .eq("is_admin", false)
+            .eq("is_read", false);
+          return err ? null : ([id, count ?? 0] as const);
+        })
+      );
+
+      const peta = new Map<string, number>();
+      hasil.forEach((h) => {
+        if (h) peta.set(h[0], h[1]);
+      });
+      if (peta.size === 0) return;
+
+      setUsers((prev) => {
+        let berubah = false;
+        const next = prev.map((u) => {
+          const jumlah = peta.get(u.id);
+          if (jumlah === undefined || jumlah === u.unread_count) return u;
+          berubah = true;
+          return { ...u, unread_count: jumlah };
+        });
+        return berubah ? next : prev;
+      });
+    };
+
+    const jadwalkanUnread = (userId: string) => {
+      perluHitungUlang.add(userId);
+      if (unreadTimer) clearTimeout(unreadTimer);
+      unreadTimer = setTimeout(() => {
+        void hitungUlangUnread();
+      }, 400);
+    };
+
+    const saatPesanBerubah = (payload: any) => {
+      const baru = payload.new as Partial<PesanRingkas> | undefined;
+
+      if (payload.eventType === "INSERT" && baru?.sender_id && baru.created_at) {
+        const senderId = baru.sender_id;
+        const createdAt = baru.created_at;
+        const ts = keWaktu(createdAt);
+        const tambah = !baru.is_admin && !baru.is_read ? 1 : 0;
+
+        setUsers((prev) => {
+          const idx = prev.findIndex((u) => u.id === senderId);
+          if (idx === -1) return prev; // profil belum dikenal: ditangani pengambilan penuh berikutnya
+
+          const lama = prev[idx];
+          const lebihBaru = !lama.last_message_time || ts >= lama.last_ts;
+          const diperbarui: ChatUser = {
+            ...lama,
+            unread_count: lama.unread_count + tambah,
+            ...(lebihBaru
+              ? { last_message: pratinjau(baru.text), last_message_time: createdAt, last_ts: ts }
+              : {}),
+          };
+
+          const next = prev.slice();
+          if (lebihBaru) {
+            next.splice(idx, 1);
+            next.unshift(diperbarui); // chat terbaru naik ke paling atas
+          } else {
+            next[idx] = diperbarui;
+          }
+          return next;
+        });
+        return;
+      }
+
+      if (payload.eventType === "UPDATE" && baru?.sender_id) {
+        const senderId = baru.sender_id;
+
+        // Status terbaca berubah -> hitung ulang unread user itu saja
+        jadwalkanUnread(senderId);
+
+        // Teks pesan terakhir diedit -> perbarui pratinjau
+        if (typeof baru.text === "string" && baru.created_at) {
+          const createdAt = baru.created_at;
+          const teks = pratinjau(baru.text);
+          setUsers((prev) => {
+            const idx = prev.findIndex((u) => u.id === senderId);
+            if (idx === -1) return prev;
+            const lama = prev[idx];
+            if (lama.last_message_time !== createdAt || lama.last_message === teks) return prev;
+            const next = prev.slice();
+            next[idx] = { ...lama, last_message: teks };
+            return next;
+          });
+        }
+        return;
+      }
+
+      if (payload.eventType === "DELETE") {
+        // Payload hapus tidak memuat pengirim, jadi sinkron ulang (ditunda agar hapus massal cukup satu kali)
+        jadwalkanRefresh(1200);
+      }
     };
 
     const channel = supabase.channel("sidebar-global-realtime", {
@@ -480,7 +876,7 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
     });
 
     channel
-      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, jadwalkanRefresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, saatPesanBerubah)
       .on("presence", { event: "sync" }, () => {
         const state = channel.presenceState();
         const activeOnlineMap: Record<string, boolean> = {};
@@ -490,39 +886,48 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
             activeOnlineMap[key] = true;
           }
         });
-        setOnlineUsers(activeOnlineMap);
+        // Tidak ada perubahan -> tidak perlu render ulang
+        setOnlineUsers((prev) => (samaPeta(prev, activeOnlineMap) ? prev : activeOnlineMap));
       })
       .on("broadcast", { event: "typing_global" }, (payload) => {
         const { userId, isTyping } = payload.payload;
         if (!userId) return;
+        const mengetik = !!isTyping;
 
-        setTypingUsers((prev) => ({ ...prev, [userId]: isTyping }));
+        // Event mengetik datang tiap ketukan; render ulang hanya jika statusnya benar-benar berubah
+        setTypingUsers((prev) => (!!prev[userId] === mengetik ? prev : { ...prev, [userId]: mengetik }));
 
-        if (isTyping) {
-          if (typingTimeouts[userId]) clearTimeout(typingTimeouts[userId]);
+        if (typingTimeouts[userId]) clearTimeout(typingTimeouts[userId]);
 
+        if (mengetik) {
           typingTimeouts[userId] = setTimeout(() => {
-            setTypingUsers((prev) => ({ ...prev, [userId]: false }));
+            setTypingUsers((prev) => (prev[userId] ? { ...prev, [userId]: false } : prev));
           }, 3000);
         }
       })
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
           await channel.track({ active_at: new Date().toISOString() });
-          // Sinkron ulang: pesan yang masuk saat koneksi sempat putus ikut terambil
-          jadwalkanRefresh();
+          // Sambung ulang setelah putus: ambil ulang pesan yang terlewat.
+          // (Sambungan pertama dilewati karena data awal sudah diambil.)
+          if (pernahTersambung) jadwalkanRefresh();
+          pernahTersambung = true;
         }
       });
 
-    // Saat tab kembali aktif, tarik ulang data (event bisa terlewat di background)
+    // Saat tab kembali aktif, tarik ulang data (event bisa terlewat di background),
+    // tapi lewati jika baru saja diambil
     const saatTabAktif = () => {
-      if (document.visibilityState === "visible") jadwalkanRefresh();
+      if (document.visibilityState === "visible" && Date.now() - lastFetchRef.current > 15000) {
+        jadwalkanRefresh();
+      }
     };
     document.addEventListener("visibilitychange", saatTabAktif);
 
     return () => {
       document.removeEventListener("visibilitychange", saatTabAktif);
       if (refreshTimer) clearTimeout(refreshTimer);
+      if (unreadTimer) clearTimeout(unreadTimer);
       supabase.removeChannel(channel);
       Object.values(typingTimeouts).forEach(clearTimeout);
     };
@@ -589,124 +994,53 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
     setOpenFolders((prev) => ({ ...prev, [folderId]: false }));
   };
 
-  // --- PEMISAHAN DATA ---
-  const usersInFolder = (folderId: string) => users.filter((u) => assignments[u.id] === folderId);
-  const usersWithChat = users.filter((u) => u.last_message_time !== null && !assignments[u.id]);
-  const usersNoChat = users.filter((u) => u.last_message_time === null && !assignments[u.id]);
+  // --- PEMISAHAN DATA (sekali jalan, hanya dihitung ulang kalau users/assignments berubah) ---
+  const { usersWithChat, usersNoChat, membersByFolder } = useMemo(() => {
+    const withChat: ChatUser[] = [];
+    const noChat: ChatUser[] = [];
+    const byFolder = new Map<string, ChatUser[]>();
 
-  const filteredUsersNoChat = usersNoChat.filter((user) =>
-    (user.full_name || "").toLowerCase().includes(searchQuery.toLowerCase())
-  );
+    for (const u of users) {
+      const folderId = assignments[u.id];
+      if (folderId) {
+        const list = byFolder.get(folderId);
+        if (list) list.push(u);
+        else byFolder.set(folderId, [u]);
+      } else if (u.last_message_time !== null) {
+        withChat.push(u);
+      } else {
+        noChat.push(u);
+      }
+    }
+    return { usersWithChat: withChat, usersNoChat: noChat, membersByFolder: byFolder };
+  }, [users, assignments]);
+
+  const filteredUsersNoChat = useMemo(() => {
+    const q = deferredQuery.trim().toLowerCase();
+    if (!q) return usersNoChat;
+    return usersNoChat.filter((user) => (user.full_name || "").toLowerCase().includes(q));
+  }, [usersNoChat, deferredQuery]);
+
+  // Daftar panjang dipotong: ratusan avatar sekaligus membebani HP lawas. Sisanya dicari lewat kolom pencarian.
+  const tampilNoChat = filteredUsersNoChat.slice(0, BATAS_TAMPIL_TANPA_CHAT);
 
   // Render satu item user
-  const renderUserItem = (user: ChatUser) => {
-    const isActive = activeId === user.id;
-    const nameInitial = (user.full_name || "U").charAt(0);
-    const isUserOnline = onlineUsers[user.id] || false;
-    const isUserTyping = typingUsers[user.id] || false;
-
-    return (
-      <div
-        key={user.id}
-        className={`group flex items-center rounded-2xl transition-colors ${
-          isActive
-            ? "bg-linear-to-r from-blue-600/40 to-cyan-500/20 ring-1 ring-cyan-300/30"
-            : "hover:bg-blue-500/10"
-        }`}
-      >
-        <Link
-          href={`/admin/chat/${user.id}`}
-          className="flex min-w-0 flex-1 select-none items-center gap-3 px-2 py-2"
-        >
-          <div className="relative flex-shrink-0">
-            {user.avatar_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={user.avatar_url}
-                alt={user.full_name || "User"}
-                className="h-9 w-9 rounded-full object-cover"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-linear-to-br from-blue-500 to-cyan-400 text-xs font-bold uppercase text-white">
-                {nameInitial}
-              </div>
-            )}
-
-            <span
-              className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-[#040a16] transition-colors duration-300 ${
-                isUserOnline ? "bg-emerald-500" : "bg-blue-900"
-              }`}
-            ></span>
-          </div>
-
-          <div className="flex min-w-0 flex-1 flex-col justify-center">
-            <div className="flex items-baseline justify-between gap-1.5">
-              <p
-                className={`truncate text-xs transition-colors ${
-                  isActive
-                    ? "font-extrabold text-white"
-                    : "font-semibold text-blue-100 group-hover:text-white"
-                }`}
-              >
-                {user.full_name || "User"}
-              </p>
-
-              {user.last_message_time && !isUserTyping && (
-                <span
-                  className={`flex-shrink-0 select-none font-mono text-[9px] transition-colors ${
-                    isActive ? "font-bold text-cyan-300" : "text-blue-300/60 group-hover:text-blue-200"
-                  }`}
-                >
-                  {new Date(user.last_message_time).toLocaleTimeString("id-ID", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
-              )}
-            </div>
-
-            <div className="mt-0.5 flex items-center justify-between gap-2">
-              <p
-                className={`truncate text-[11px] transition-colors ${
-                  isUserTyping
-                    ? "animate-pulse font-medium text-cyan-300"
-                    : isActive
-                    ? "text-blue-100"
-                    : "text-blue-300/70 group-hover:text-blue-200"
-                }`}
-              >
-                {isUserTyping ? "sedang mengetik..." : user.last_message || "Tidak ada pesan"}
-              </p>
-
-              {user.unread_count > 0 && (
-                <div className="flex h-4 min-w-[16px] flex-shrink-0 items-center justify-center rounded-full bg-linear-to-r from-blue-500 to-cyan-400 px-1 font-mono text-[9px] font-bold text-white">
-                  {user.unread_count}
-                </div>
-              )}
-            </div>
-          </div>
-        </Link>
-
-        {/* Simpan kontak ke folder (di desktop muncul saat hover) */}
-        <button
-          type="button"
-          onClick={() => setModal({ kind: "move", user })}
-          title="Simpan ke folder"
-          aria-label="Simpan ke folder"
-          className="mr-1 flex-shrink-0 rounded-lg p-1.5 text-blue-300/60 transition hover:bg-blue-500/15 hover:text-cyan-200 focus:opacity-100 md:opacity-0 md:group-hover:opacity-100"
-        >
-          <Icon d={ICONS.folder} className="h-4 w-4" />
-        </button>
-      </div>
-    );
-  };
+  const renderUserItem = (user: ChatUser) => (
+    <UserItem
+      key={user.id}
+      user={user}
+      isActive={activeId === user.id}
+      isOnline={!!onlineUsers[user.id]}
+      isTyping={!!typingUsers[user.id]}
+      onMove={bukaModalPindah}
+    />
+  );
 
   // Render satu folder
   const renderFolder = (folder: Folder) => {
     const locked = isFolderLocked(folder);
     const isOpen = !!openFolders[folder.id] && !locked;
-    const members = usersInFolder(folder.id);
+    const members = membersByFolder.get(folder.id) ?? KOSONG;
     const unreadTotal = members.reduce((sum, u) => sum + u.unread_count, 0);
 
     return (
@@ -782,7 +1116,10 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
   };
 
   return (
-    <div className="scrollbar-biru flex h-full w-full flex-col justify-between overflow-y-auto p-4 pb-24 text-blue-100 antialiased md:pb-4">
+    <div
+      ref={scrollRef}
+      className="scrollbar-biru flex h-full w-full flex-col justify-between overflow-y-auto p-4 pb-24 text-blue-100 antialiased md:pb-4"
+    >
       <div>
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-sm font-bold uppercase tracking-widest text-blue-200">Daftar Obrolan</h1>
@@ -824,9 +1161,16 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
         <div className="mb-8 space-y-1">
           {usersWithChat.length > 0
             ? usersWithChat.map((user) => renderUserItem(user))
-            : !loading && (
+            : !loading &&
+              !hasMore && (
                 <div className="py-4 text-center text-xs text-blue-300/60">Belum ada obrolan aktif.</div>
               )}
+
+          {/* Pemicu infinite scroll */}
+          {hasMore && <div ref={sentinelRef} aria-hidden="true" className="h-px" />}
+          {loadingMore && (
+            <div className="py-3 text-center text-[11px] italic text-blue-300/60">Memuat obrolan lama...</div>
+          )}
         </div>
       </div>
 
@@ -837,7 +1181,9 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             className="flex w-full items-center justify-between rounded-xl px-2 py-2 text-left text-xs font-semibold text-blue-300/80 transition-colors hover:text-cyan-200"
           >
-            <span>Hubungi Pengguna Baru ({usersNoChat.length})</span>
+            <span>
+              Hubungi Pengguna Baru{hasMore ? "" : ` (${usersNoChat.length})`}
+            </span>
             <Icon
               d={ICONS.chevronDown}
               className={`h-4 w-4 transition-transform duration-200 ${isDropdownOpen ? "rotate-180" : ""}`}
@@ -870,8 +1216,16 @@ export default function ChatListSidebar({ activeId }: { activeId?: string }) {
               </div>
 
               <div className="scrollbar-biru max-h-48 space-y-1 overflow-y-auto pr-1">
-                {filteredUsersNoChat.length > 0 ? (
-                  filteredUsersNoChat.map((user) => renderUserItem(user))
+                {tampilNoChat.length > 0 ? (
+                  <>
+                    {tampilNoChat.map((user) => renderUserItem(user))}
+                    {filteredUsersNoChat.length > tampilNoChat.length && (
+                      <div className="py-2 text-center text-[11px] italic text-blue-300/60">
+                        Menampilkan {tampilNoChat.length} dari {filteredUsersNoChat.length}. Ketik nama untuk
+                        mempersempit.
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <div className="py-2 text-center text-[11px] italic text-blue-300/60">
                     User tidak ditemukan
