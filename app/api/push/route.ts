@@ -59,10 +59,22 @@ export async function POST(req: NextRequest) {
     : q.eq("is_admin", false);
   const { count } = await q;
 
-  const { data: subs } = await admin
+  const { data: subs, error: subscriptionError } = await admin
     .from("push_subscriptions")
     .select("*")
     .eq("user_id", penerimaId);
+  const jumlahLangganan = subs?.length ?? 0;
+  console.log(
+    `[push] Jumlah langganan untuk penerima ${penerimaId.slice(0, 12)}: ${jumlahLangganan}`,
+  );
+  if (subscriptionError) {
+    console.error("[push] Gagal mengambil langganan:", subscriptionError.message);
+  }
+  if (jumlahLangganan === 0) {
+    console.log(
+      `[push] Tidak ada langganan untuk penerima ${penerimaId.slice(0, 12)}.`,
+    );
+  }
 
   const isi = (
     record.text?.trim() ||
@@ -86,6 +98,11 @@ export async function POST(req: NextRequest) {
           payload
         );
       } catch (err: any) {
+        console.error("[push] Pengiriman notifikasi gagal:", {
+          statusCode: err.statusCode,
+          body: err.body,
+          penerimaId: penerimaId.slice(0, 12),
+        });
         if (err.statusCode === 404 || err.statusCode === 410) {
           await admin.from("push_subscriptions").delete().eq("endpoint", s.endpoint);
         }
