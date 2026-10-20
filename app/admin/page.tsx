@@ -9,6 +9,7 @@ interface MenuItem {
   name: string;
   path: string;
   iconPath: string; // atribut "d" dari SVG
+  shortcut: string; // satu huruf, ditekan tanpa modifier
 }
 
 // Sama dengan menu di Sidebar
@@ -16,24 +17,28 @@ const menuItems: MenuItem[] = [
   {
     name: "Beranda",
     path: "/admin",
+    shortcut: "b",
     iconPath:
       "M2.25 12l8.954-8.955a1.126 1.126 0 011.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25",
   },
   {
     name: "Karya Tulis",
     path: "/admin/karya-tulis",
+    shortcut: "k",
     iconPath:
       "M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10",
   },
   {
     name: "Website",
     path: "/admin/koleksi-website",
+    shortcut: "w",
     iconPath:
       "M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418",
   },
   {
     name: "Chat",
     path: "/admin/chat",
+    shortcut: "c",
     iconPath:
       "M8.625 9.75a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375m-13.5 3.01c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z",
   },
@@ -80,6 +85,7 @@ export default function AdminDashboard() {
   const pathname = usePathname();
   const [waktu, setWaktu] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
+  const [pesanBaru, setPesanBaru] = useState<number>(0);
 
   const itemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
   const indeksTerakhir = useRef(0);
@@ -215,6 +221,84 @@ export default function AdminDashboard() {
     return () => window.removeEventListener("keydown", tekan);
   }, [loading]);
 
+  // 4. JUMLAH PESAN BARU (belum dibaca) untuk badge di tombol Chat
+  useEffect(() => {
+    if (loading) return;
+
+    let aktif = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    // Hitung saja di server (head: true), tidak mengunduh barisnya
+    const muatJumlah = async () => {
+      const { count, error } = await supabase
+        .from("messages")
+        .select("id", { count: "exact", head: true })
+        .eq("is_admin", false)
+        .eq("is_read", false);
+
+      if (aktif && !error) setPesanBaru(count ?? 0);
+    };
+
+    // Banyak event beruntun (mis. tandai dibaca) digabung jadi satu hitung ulang
+    const jadwalkan = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(muatJumlah, 300);
+    };
+
+    muatJumlah();
+
+    const channel = supabase
+      .channel("beranda-pesan-baru")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "messages" },
+        jadwalkan
+      )
+      .subscribe();
+
+    // Segarkan saat tab kembali aktif, jaga-jaga ada event yang terlewat
+    const saatTampil = () => {
+      if (document.visibilityState === "visible") muatJumlah();
+    };
+    document.addEventListener("visibilitychange", saatTampil);
+
+    return () => {
+      aktif = false;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", saatTampil);
+      supabase.removeChannel(channel);
+    };
+  }, [loading]);
+
+  // 5. SHORTCUT HURUF: tekan b / k / w / c untuk langsung membuka menu
+  useEffect(() => {
+    if (loading) return;
+
+    const tekan = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.repeat) return;
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+
+      // Jangan ganggu kolom isian / elemen yang bisa diedit
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.isContentEditable ||
+          ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+      ) {
+        return;
+      }
+
+      const item = menuItems.find((m) => m.shortcut === e.key.toLowerCase());
+      if (!item) return;
+
+      e.preventDefault();
+      router.push(item.path);
+    };
+
+    window.addEventListener("keydown", tekan);
+    return () => window.removeEventListener("keydown", tekan);
+  }, [loading, router]);
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center font-sans">
@@ -225,7 +309,7 @@ export default function AdminDashboard() {
     );
   }
 
-  // 4. TAMPILAN UTAMA (tanpa background, gambar dari layout terlihat penuh)
+  // 6. TAMPILAN UTAMA (tanpa background, gambar dari layout terlihat penuh)
   return (
     <div className="relative flex min-h-screen flex-col px-5 font-sans text-zinc-50 antialiased">
       {/* Jam di bagian atas halaman */}
@@ -249,6 +333,7 @@ export default function AdminDashboard() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {menuItems.map((item, i) => {
             const active = isActive(item.path);
+            const jumlah = item.path === "/admin/chat" ? pesanBaru : 0;
             return (
               <Link
                 key={item.path}
@@ -260,7 +345,11 @@ export default function AdminDashboard() {
                   indeksTerakhir.current = i;
                 }}
                 aria-current={active ? "page" : undefined}
-                className={`flex flex-col items-center gap-2 rounded-2xl border px-3 py-4 text-sm font-semibold outline-none backdrop-blur-sm transition duration-200 ease-out hover:scale-[1.03] active:scale-95 focus-visible:scale-105 focus-visible:border-cyan-200 focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#040a16] focus-visible:shadow-[0_0_24px_rgba(56,189,248,0.5)] ${
+                aria-keyshortcuts={item.shortcut.toUpperCase()}
+                aria-label={
+                  jumlah > 0 ? `${item.name}, ${jumlah} pesan baru` : undefined
+                }
+                className={`relative flex flex-col items-center gap-2 rounded-2xl border px-3 py-4 text-sm font-semibold outline-none backdrop-blur-sm transition duration-200 ease-out hover:scale-[1.03] active:scale-95 focus-visible:scale-105 focus-visible:border-cyan-200 focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#040a16] focus-visible:shadow-[0_0_24px_rgba(56,189,248,0.5)] ${
                   active
                     ? "border-transparent bg-linear-to-r from-blue-600 to-cyan-500 text-white"
                     : "border-blue-400/30 bg-blue-950/40 text-blue-100 hover:border-cyan-300/60 hover:bg-blue-500/20 hover:text-cyan-200 focus-visible:bg-blue-500/30 focus-visible:text-cyan-100"
@@ -268,6 +357,21 @@ export default function AdminDashboard() {
               >
                 <Icon d={item.iconPath} className="h-6 w-6" />
                 {item.name}
+
+                {/* Badge jumlah pesan baru */}
+                {jumlah > 0 && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[11px] font-bold leading-none text-white shadow-[0_0_10px_rgba(244,63,94,0.6)]"
+                  >
+                    {jumlah > 99 ? "99+" : jumlah}
+                  </span>
+                )}
+
+                {/* Huruf shortcut (hanya layar md ke atas) */}
+                <span className="absolute left-2 top-2 hidden md:block">
+                  <Tombol>{item.shortcut.toUpperCase()}</Tombol>
+                </span>
               </Link>
             );
           })}
@@ -287,6 +391,8 @@ export default function AdminDashboard() {
         <span className="mx-0.5">·</span>
         <Tombol>Enter</Tombol>
         <span className="ml-0.5">buka</span>
+        <span className="mx-0.5">·</span>
+        <span>huruf di kartu = langsung</span>
       </p>
     </div>
   );
