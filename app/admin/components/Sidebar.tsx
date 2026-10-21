@@ -1,4 +1,3 @@
-// src/components/Sidebar.tsx (atau sesuaikan dengan path folder Anda)
 "use client";
 
 import { useEffect, useState } from "react";
@@ -11,7 +10,7 @@ import { supabase } from "@/lib/supabase";
 interface MenuItem {
   name: string;
   path: string;
-  iconPath: string; // atribut "d" dari SVG
+  iconPath: string;
 }
 
 interface SidebarProps {
@@ -24,6 +23,8 @@ interface Pengguna {
   email: string;
   avatar: string | null;
 }
+
+/* ---------- Menu Navigasi ---------- */
 
 const menuItems: MenuItem[] = [
   {
@@ -45,6 +46,18 @@ const menuItems: MenuItem[] = [
       "M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418",
   },
   {
+    name: "Drive",
+    path: "/admin/drive",
+    iconPath:
+      "M8.5 3h7l7 12.124-3.5 6.062H5l-3.5-6.062L8.5 3zm0 0 7 12.124m-13 0h20m-13 0-4.5 6.062m10.5-6.062 4.5 6.062",
+  },
+  {
+    name: "Document",
+    path: "/admin/document",
+    iconPath:
+      "M14 2.75H6A2.25 2.25 0 003.75 5v14A2.25 2.25 0 006 21.25h12A2.25 2.25 0 0020.25 19V9L14 2.75Z M14 2.75V9h6.25 M7.5 13h9 M7.5 16.5h9 M7.5 9.5h2",
+  },
+  {
     name: "Chat",
     path: "/admin/chat",
     iconPath:
@@ -52,15 +65,21 @@ const menuItems: MenuItem[] = [
   },
 ];
 
-// Ikon tambahan
+/* ---------- Ikon Tambahan ---------- */
+
 const IKON_KEMBALI = ["M19 12H5", "m11 6-6 6 6 6"];
+
 const IKON_LOGOUT = [
   "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4",
   "m16 17 5-5-5-5",
   "M21 12H9",
 ];
+
 const IKON_MENU = ["M4 6h16", "M4 12h16", "M4 18h16"];
+
 const IKON_TUTUP = ["M18 6 6 18", "m6 6 12 12"];
+
+/* ---------- Komponen Ikon SVG ---------- */
 
 function Icon({
   d,
@@ -70,6 +89,7 @@ function Icon({
   className?: string;
 }) {
   const daftar = Array.isArray(d) ? d : [d];
+
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -82,14 +102,15 @@ function Icon({
       aria-hidden="true"
       className={className}
     >
-      {daftar.map((p) => (
-        <path key={p} d={p} />
+      {daftar.map((p, index) => (
+        <path key={`${p}-${index}`} d={p} />
       ))}
     </svg>
   );
 }
 
-/* Dekorasi cincin, sama seperti di halaman utama */
+/* ---------- Dekorasi Cincin ---------- */
+
 function Cincin({ className = "" }: { className?: string }) {
   return (
     <svg
@@ -107,12 +128,13 @@ function Cincin({ className = "" }: { className?: string }) {
   );
 }
 
-/* Logo brand (gambar ikon) */
+/* ---------- Logo Brand ---------- */
+
 function LogoBrand({ className = "" }: { className?: string }) {
   return (
     <Image
       src="/icon/icon-192x192.png"
-      alt=""
+      alt="Logo AMR"
       width={44}
       height={44}
       priority
@@ -121,13 +143,20 @@ function LogoBrand({ className = "" }: { className?: string }) {
   );
 }
 
-/* ---------- Sesi pengguna ---------- */
+/* ---------- Sesi Pengguna ---------- */
 
 function ambilPengguna(session: Session | null): Pengguna | null {
   const user = session?.user;
+
   if (!user) return null;
-  const meta = (user.user_metadata ?? {}) as Record<string, string | undefined>;
+
+  const meta = (user.user_metadata ?? {}) as Record<
+    string,
+    string | undefined
+  >;
+
   const email = user.email ?? "";
+
   return {
     id: user.id,
     nama: meta.full_name || meta.name || email.split("@")[0] || "Admin",
@@ -143,11 +172,20 @@ function useSesi() {
   useEffect(() => {
     let aktif = true;
 
-    supabase.auth.getSession().then(({ data }) => {
+    const muatSesi = async () => {
+      const { data, error } = await supabase.auth.getSession();
+
       if (!aktif) return;
+
+      if (error) {
+        console.error("Gagal mengambil sesi:", error.message);
+      }
+
       setPengguna(ambilPengguna(data.session));
       setSiap(true);
-    });
+    };
+
+    void muatSesi();
 
     const {
       data: { subscription },
@@ -165,6 +203,8 @@ function useSesi() {
   return { pengguna, siap };
 }
 
+/* ---------- Avatar Pengguna ---------- */
+
 function Avatar({
   pengguna,
   ukuran,
@@ -173,9 +213,10 @@ function Avatar({
   ukuran: string;
 }) {
   const inisial = pengguna.nama.trim().charAt(0).toUpperCase() || "?";
+
   return (
     <span
-      className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-linear-to-br from-blue-500 to-cyan-400 font-bold text-white ${ukuran}`}
+      className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-500 to-cyan-400 font-bold text-white ${ukuran}`}
     >
       {pengguna.avatar ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -192,7 +233,7 @@ function Avatar({
   );
 }
 
-/* ---------- Card profil ---------- */
+/* ---------- Card Profil ---------- */
 
 function CardProfil({
   pengguna,
@@ -207,7 +248,6 @@ function CardProfil({
   onLogout: () => void;
   onNavigasi?: () => void;
   sibuk: boolean;
-  /** Desktop: teks hanya muncul saat sidebar di-hover. Mobile: selalu tampil. */
   tampilTeks: "hover" | "selalu";
 }) {
   const kelasTeks =
@@ -216,29 +256,35 @@ function CardProfil({
       : "";
 
   if (!siap) {
-    return <div className="h-24 animate-pulse rounded-2xl bg-blue-900/30" />;
+    return (
+      <div className="h-24 animate-pulse rounded-2xl bg-blue-900/30" />
+    );
   }
 
   if (!pengguna) return null;
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-blue-400/20 bg-linear-to-br from-blue-700/40 to-blue-950/60 p-1.5">
+    <div className="relative overflow-hidden rounded-2xl border border-blue-400/20 bg-gradient-to-br from-blue-700/40 to-blue-950/60 p-1.5">
       <Cincin className="absolute -right-8 -top-8 h-24 w-24 text-white/10" />
 
-      {/* Identitas */}
+      {/* Identitas Pengguna */}
       <div className="relative flex items-center gap-3">
         <Avatar pengguna={pengguna} ukuran="h-9 w-9 text-sm" />
-        <div className={`min-w-0 overflow-hidden whitespace-nowrap ${kelasTeks}`}>
+
+        <div
+          className={`min-w-0 overflow-hidden whitespace-nowrap ${kelasTeks}`}
+        >
           <p className="truncate text-sm font-bold leading-tight text-white">
             {pengguna.nama}
           </p>
+
           <p className="truncate text-[11px] text-blue-200/80">
             {pengguna.email}
           </p>
         </div>
       </div>
 
-      {/* Tombol */}
+      {/* Tombol Profil */}
       <div className="relative mt-1.5 flex flex-col gap-1">
         <Link
           href="/"
@@ -247,18 +293,21 @@ function CardProfil({
           className="flex items-center gap-3 rounded-xl px-2 py-2 text-sm font-semibold text-blue-100 outline-none transition duration-200 hover:bg-blue-500/20 hover:text-cyan-200 focus-visible:ring-2 focus-visible:ring-cyan-300/70 active:scale-95"
         >
           <Icon d={IKON_KEMBALI} className="h-5 w-5 shrink-0" />
+
           <span className={`overflow-hidden whitespace-nowrap ${kelasTeks}`}>
             Kembali ke Beranda
           </span>
         </Link>
 
         <button
+          type="button"
           onClick={onLogout}
           disabled={sibuk}
           title="Logout"
           className="flex w-full cursor-pointer items-center gap-3 rounded-xl px-2 py-2 text-left text-sm font-semibold text-blue-100 outline-none transition duration-200 hover:bg-blue-500/20 hover:text-cyan-200 focus-visible:ring-2 focus-visible:ring-cyan-300/70 active:scale-95 disabled:cursor-wait disabled:opacity-60"
         >
           <Icon d={IKON_LOGOUT} className="h-5 w-5 shrink-0" />
+
           <span className={`overflow-hidden whitespace-nowrap ${kelasTeks}`}>
             {sibuk ? "Keluar..." : "Logout"}
           </span>
@@ -268,27 +317,39 @@ function CardProfil({
   );
 }
 
+/* ---------- Sidebar Utama ---------- */
+
 export default function Sidebar({ hideMobile = false }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+
   const { pengguna, siap } = useSesi();
+
   const [sibuk, setSibuk] = useState(false);
   const [terbuka, setTerbuka] = useState(false);
 
-  // "/admin" harus persis sama, menu lain aktif juga untuk sub-halamannya
+  // Beranda hanya aktif di /admin.
+  // Menu lain aktif juga pada sub-halamannya.
   const isActive = (path: string) =>
-    path === "/admin" ? pathname === "/admin" : pathname.startsWith(path);
+    path === "/admin"
+      ? pathname === "/admin"
+      : pathname.startsWith(path);
 
   const tutup = () => setTerbuka(false);
 
-  // Mobile: tutup dengan Escape + kunci scroll halaman saat sidebar terbuka
+  /* ---------- Kontrol Drawer Mobile ---------- */
+
   useEffect(() => {
     if (!terbuka) return;
 
     const tekan = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setTerbuka(false);
+      if (e.key === "Escape") {
+        setTerbuka(false);
+      }
     };
+
     document.addEventListener("keydown", tekan);
+
     const overflowLama = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
@@ -298,42 +359,61 @@ export default function Sidebar({ hideMobile = false }: SidebarProps) {
     };
   }, [terbuka]);
 
-  // Jika hideMobile aktif, pastikan drawer tertutup
   useEffect(() => {
-    if (hideMobile) setTerbuka(false);
+    if (hideMobile) {
+      setTerbuka(false);
+    }
   }, [hideMobile]);
 
+  /* ---------- Logout ---------- */
+
   const logout = async () => {
+    if (sibuk) return;
+
     setSibuk(true);
+
     try {
-      await supabase.auth.signOut();
-    } finally {
-      setSibuk(false);
+      const { error } = await supabase.auth.signOut();
+
+      if (error) {
+        console.error("Gagal logout:", error.message);
+        return;
+      }
+
       setTerbuka(false);
       router.push("/");
+      router.refresh();
+    } finally {
+      setSibuk(false);
     }
   };
 
   return (
     <>
-      {/* 1. DESKTOP SIDEBAR */}
-      <aside className="group fixed left-0 top-0 z-50 hidden h-screen w-[4.5rem] flex-col justify-center overflow-hidden border-r border-blue-400/20 bg-linear-to-b from-blue-950 to-zinc-950 antialiased transition-[width] duration-200 ease-in-out hover:w-60 md:flex">
+      {/* =========================================
+          1. DESKTOP SIDEBAR
+      ========================================= */}
+
+      <aside className="group fixed left-0 top-0 z-50 hidden h-screen w-[4.5rem] flex-col justify-center overflow-hidden border-r border-blue-400/20 bg-gradient-to-b from-blue-950 to-zinc-950 antialiased transition-[width] duration-200 ease-in-out hover:w-60 md:flex">
         <Cincin className="absolute -left-16 -top-16 h-56 w-56 text-blue-400/10" />
 
         {/* Logo */}
         <div className="absolute left-0 top-0 flex h-20 w-full items-center gap-3 px-3">
           <LogoBrand />
+
           <span className="overflow-hidden whitespace-nowrap text-lg font-black tracking-widest text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100">
             AMR
           </span>
         </div>
 
+        {/* Menu Navigasi Desktop */}
         <nav
           className="relative flex w-full flex-col gap-2 px-3"
           aria-label="Menu admin"
         >
           {menuItems.map((item) => {
             const active = isActive(item.path);
+
             return (
               <Link
                 key={item.path}
@@ -342,11 +422,12 @@ export default function Sidebar({ hideMobile = false }: SidebarProps) {
                 title={item.name}
                 className={`flex items-center gap-4 rounded-2xl px-3 py-3 text-sm font-semibold outline-none transition duration-200 ease-out focus-visible:ring-2 focus-visible:ring-cyan-300/70 active:scale-95 ${
                   active
-                    ? "bg-linear-to-r from-blue-600 to-cyan-500 text-white"
+                    ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white"
                     : "text-blue-200/80 hover:bg-blue-500/15 hover:text-cyan-200"
                 }`}
               >
                 <Icon d={item.iconPath} className="h-5 w-5 shrink-0" />
+
                 <span className="overflow-hidden whitespace-nowrap opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                   {item.name}
                 </span>
@@ -355,7 +436,7 @@ export default function Sidebar({ hideMobile = false }: SidebarProps) {
           })}
         </nav>
 
-        {/* Card profil */}
+        {/* Card Profil Desktop */}
         <div className="absolute bottom-0 left-0 w-full px-3 pb-3">
           <CardProfil
             pengguna={pengguna}
@@ -367,14 +448,18 @@ export default function Sidebar({ hideMobile = false }: SidebarProps) {
         </div>
       </aside>
 
-      {/* 2. MOBILE: tombol menu di pojok kanan bawah */}
+      {/* =========================================
+          2. TOMBOL MENU MOBILE
+      ========================================= */}
+
       {!hideMobile && (
         <button
+          type="button"
           onClick={() => setTerbuka(true)}
           aria-label="Buka menu"
           aria-haspopup="dialog"
           aria-expanded={terbuka}
-          className={`fixed bottom-5 right-5 z-40 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-linear-to-r from-blue-600 to-cyan-500 text-white shadow-[0_0_20px_rgba(56,189,248,0.3)] transition duration-200 ease-out hover:from-blue-500 hover:to-cyan-400 active:scale-90 active:from-blue-700 active:to-cyan-600 md:hidden ${
+          className={`fixed bottom-5 right-5 z-40 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-[0_0_20px_rgba(56,189,248,0.3)] transition duration-200 ease-out hover:from-blue-500 hover:to-cyan-400 active:scale-90 active:from-blue-700 active:to-cyan-600 md:hidden ${
             terbuka ? "invisible" : ""
           }`}
         >
@@ -382,7 +467,10 @@ export default function Sidebar({ hideMobile = false }: SidebarProps) {
         </button>
       )}
 
-      {/* 3. MOBILE: sidebar (drawer dari kiri) */}
+      {/* =========================================
+          3. MOBILE SIDEBAR / DRAWER
+      ========================================= */}
+
       {!hideMobile && (
         <div
           className={`fixed inset-0 z-50 md:hidden ${
@@ -392,6 +480,7 @@ export default function Sidebar({ hideMobile = false }: SidebarProps) {
         >
           {/* Overlay */}
           <button
+            type="button"
             tabIndex={terbuka ? 0 : -1}
             aria-label="Tutup menu"
             onClick={tutup}
@@ -400,26 +489,29 @@ export default function Sidebar({ hideMobile = false }: SidebarProps) {
             }`}
           />
 
-          {/* Panel */}
+          {/* Panel Sidebar Mobile */}
           <aside
             role="dialog"
             aria-modal="true"
             aria-label="Menu admin"
-            className={`absolute left-0 top-0 flex h-full w-72 max-w-[85vw] flex-col overflow-hidden border-r border-blue-400/20 bg-linear-to-b from-blue-950 to-zinc-950 antialiased transition-transform duration-200 ease-out ${
+            className={`absolute left-0 top-0 flex h-full w-72 max-w-[85vw] flex-col overflow-hidden border-r border-blue-400/20 bg-gradient-to-b from-blue-950 to-zinc-950 antialiased transition-transform duration-200 ease-out ${
               terbuka ? "translate-x-0" : "-translate-x-full"
             } ${terbuka ? "" : "invisible"}`}
           >
             <Cincin className="absolute -left-16 -top-16 h-56 w-56 text-blue-400/10" />
 
-            {/* Logo + tombol tutup */}
+            {/* Logo dan Tombol Tutup */}
             <div className="relative flex h-20 shrink-0 items-center justify-between px-4">
               <div className="flex items-center gap-3">
                 <LogoBrand />
+
                 <span className="text-lg font-black tracking-widest text-white">
                   AMR
                 </span>
               </div>
+
               <button
+                type="button"
                 onClick={tutup}
                 aria-label="Tutup menu"
                 className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-blue-500/15 text-blue-200 transition duration-200 hover:bg-blue-500/25 hover:text-cyan-200 active:scale-90"
@@ -428,13 +520,14 @@ export default function Sidebar({ hideMobile = false }: SidebarProps) {
               </button>
             </div>
 
-            {/* Menu */}
+            {/* Menu Navigasi Mobile */}
             <nav
               className="scrollbar-biru relative flex flex-1 flex-col gap-2 overflow-y-auto px-3 py-2"
               aria-label="Menu admin"
             >
               {menuItems.map((item) => {
                 const active = isActive(item.path);
+
                 return (
                   <Link
                     key={item.path}
@@ -443,18 +536,22 @@ export default function Sidebar({ hideMobile = false }: SidebarProps) {
                     onClick={tutup}
                     className={`flex items-center gap-4 rounded-2xl px-3 py-3 text-sm font-semibold outline-none transition duration-200 ease-out focus-visible:ring-2 focus-visible:ring-cyan-300/70 active:scale-95 ${
                       active
-                        ? "bg-linear-to-r from-blue-600 to-cyan-500 text-white"
+                        ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white"
                         : "text-blue-200/80 hover:bg-blue-500/15 hover:text-cyan-200"
                     }`}
                   >
-                    <Icon d={item.iconPath} className="h-5 w-5 shrink-0" />
-                    {item.name}
+                    <Icon
+                      d={item.iconPath}
+                      className="h-5 w-5 shrink-0"
+                    />
+
+                    <span>{item.name}</span>
                   </Link>
                 );
               })}
             </nav>
 
-            {/* Card profil */}
+            {/* Card Profil Mobile */}
             <div className="relative shrink-0 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
               <CardProfil
                 pengguna={pengguna}
