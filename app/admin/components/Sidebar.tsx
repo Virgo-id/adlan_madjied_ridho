@@ -58,6 +58,12 @@ const menuItems: MenuItem[] = [
       "M14 2.75H6A2.25 2.25 0 003.75 5v14A2.25 2.25 0 006 21.25h12A2.25 2.25 0 0020.25 19V9L14 2.75Z M14 2.75V9h6.25 M7.5 13h9 M7.5 16.5h9 M7.5 9.5h2",
   },
   {
+    name: "Jadwal Kuliah",
+    path: "/admin/jadwal-kuliah",
+    iconPath:
+      "M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5",
+  },
+  {
     name: "Chat",
     path: "/admin/chat",
     iconPath:
@@ -392,13 +398,16 @@ export default function Sidebar({ hideMobile = false }: SidebarProps) {
     <>
       {/* =========================================
           1. DESKTOP SIDEBAR
+          Tiga bagian bertumpuk: logo, navigasi, card profil.
+          Navigasi mengisi ruang tengah dan bisa di-scroll,
+          sehingga tidak pernah tertimpa card di bawah.
       ========================================= */}
 
-      <aside className="group fixed left-0 top-0 z-50 hidden h-screen w-[4.5rem] flex-col justify-center overflow-hidden border-r border-blue-400/20 bg-gradient-to-b from-blue-950 to-zinc-950 antialiased transition-[width] duration-200 ease-in-out hover:w-60 md:flex">
+      <aside className="group fixed left-0 top-0 z-50 hidden h-screen w-[4.5rem] flex-col overflow-hidden border-r border-blue-400/20 bg-gradient-to-b from-blue-950 to-zinc-950 antialiased transition-[width] duration-200 ease-in-out hover:w-60 md:flex">
         <Cincin className="absolute -left-16 -top-16 h-56 w-56 text-blue-400/10" />
 
         {/* Logo */}
-        <div className="absolute left-0 top-0 flex h-20 w-full items-center gap-3 px-3">
+        <div className="relative flex h-20 w-full shrink-0 items-center gap-3 px-3">
           <LogoBrand />
 
           <span className="overflow-hidden whitespace-nowrap text-lg font-black tracking-widest text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100">
@@ -408,36 +417,39 @@ export default function Sidebar({ hideMobile = false }: SidebarProps) {
 
         {/* Menu Navigasi Desktop */}
         <nav
-          className="relative flex w-full flex-col gap-2 px-3"
+          className="scrollbar-biru relative flex min-h-0 w-full flex-1 flex-col overflow-y-auto overflow-x-hidden px-3 py-2"
           aria-label="Menu admin"
         >
-          {menuItems.map((item) => {
-            const active = isActive(item.path);
+          {/* my-auto: menu di tengah jika ruang cukup, scroll jika tidak */}
+          <div className="my-auto flex flex-col gap-2">
+            {menuItems.map((item) => {
+              const active = isActive(item.path);
 
-            return (
-              <Link
-                key={item.path}
-                href={item.path}
-                aria-current={active ? "page" : undefined}
-                title={item.name}
-                className={`flex items-center gap-4 rounded-2xl px-3 py-3 text-sm font-semibold outline-none transition duration-200 ease-out focus-visible:ring-2 focus-visible:ring-cyan-300/70 active:scale-95 ${
-                  active
-                    ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white"
-                    : "text-blue-200/80 hover:bg-blue-500/15 hover:text-cyan-200"
-                }`}
-              >
-                <Icon d={item.iconPath} className="h-5 w-5 shrink-0" />
+              return (
+                <Link
+                  key={item.path}
+                  href={item.path}
+                  aria-current={active ? "page" : undefined}
+                  title={item.name}
+                  className={`flex items-center gap-4 rounded-2xl px-3 py-3 text-sm font-semibold outline-none transition duration-200 ease-out focus-visible:ring-2 focus-visible:ring-cyan-300/70 active:scale-95 ${
+                    active
+                      ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white"
+                      : "text-blue-200/80 hover:bg-blue-500/15 hover:text-cyan-200"
+                  }`}
+                >
+                  <Icon d={item.iconPath} className="h-5 w-5 shrink-0" />
 
-                <span className="overflow-hidden whitespace-nowrap opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                  {item.name}
-                </span>
-              </Link>
-            );
-          })}
+                  <span className="overflow-hidden whitespace-nowrap opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                    {item.name}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
         </nav>
 
         {/* Card Profil Desktop */}
-        <div className="absolute bottom-0 left-0 w-full px-3 pb-3">
+        <div className="relative w-full shrink-0 px-3 pb-3 pt-2">
           <CardProfil
             pengguna={pengguna}
             siap={siap}
@@ -522,7 +534,7 @@ export default function Sidebar({ hideMobile = false }: SidebarProps) {
 
             {/* Menu Navigasi Mobile */}
             <nav
-              className="scrollbar-biru relative flex flex-1 flex-col gap-2 overflow-y-auto px-3 py-2"
+              className="scrollbar-biru relative flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 py-2"
               aria-label="Menu admin"
             >
               {menuItems.map((item) => {
